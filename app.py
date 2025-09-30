@@ -512,8 +512,54 @@ with tabs[1]:
             use_container_width=True, hide_index=True
         )
         st.markdown("</div>", unsafe_allow_html=True)
-        st.caption("Validation chose the threshold to satisfy recall ≥ 0.60 and maximize F1 among those thresholds. "
-                   "We froze that threshold and reported metrics on test.")
+        st.caption(
+            "Validation chose the threshold to satisfy recall \u2265 0.60 and maximize F1 among those thresholds. "
+            "We froze that threshold and reported metrics on test."
+        )
+
+        # ---- Model comparison (Test) + ROC overlay (Test) ----
+        import json
+
+        # Comparison table (uses models/metrics_all.json produced by src.model_train)
+        if os.path.exists(os.path.join(MODELS_DIR, "metrics_all.json")):
+            with open(os.path.join(MODELS_DIR, "metrics_all.json")) as f:
+                mm = json.load(f)
+
+            rows = []
+            order = ["logreg", "rf", "xgb"]  # show in a nice order if present
+            label = {"logreg": "LOGREG", "rf": "RANDOM FOREST", "xgb": "XGBOOST"}
+            for m in order:
+                if m in mm and "test" in mm[m]:
+                    t = mm[m]["test"]
+                    rows.append({
+                        "Model": label[m],
+                        "Precision": round(float(t.get("precision", float("nan"))), 3),
+                        "Recall": round(float(t.get("recall", float("nan"))), 3),
+                        "F1-score": round(float(t.get("f1", float("nan"))), 3),
+                        "ROC-AUC": round(float(t.get("auc", float("nan"))), 3),
+                        "Threshold": round(float(t.get("used_threshold", 0.5)), 2),
+                    })
+
+            if rows:
+                st.markdown("**Model comparison (Test)**")
+                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+        # ROC overlay (uses models/roc_curves_test.json produced by src.model_train)
+        if os.path.exists(os.path.join(MODELS_DIR, "roc_curves_test.json")):
+            with open(os.path.join(MODELS_DIR, "roc_curves_test.json")) as f:
+                rc = json.load(f)
+
+            if rc:
+                fig = plt.figure()
+                for name, pts in rc.items():
+                    plt.plot(pts["fpr"], pts["tpr"], label=name.upper())
+                plt.plot([0, 1], [0, 1], linestyle="--", linewidth=1)
+                plt.xlabel("False Positive Rate")
+                plt.ylabel("True Positive Rate")
+                plt.title("ROC (Test)")
+                plt.legend()
+                st.pyplot(fig)
+
 
         # ----- Optional: compare calibrated probabilities -----
         st.markdown("##### Optional: Compare calibrated probabilities")
