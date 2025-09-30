@@ -1,6 +1,6 @@
 praise_venv/
 __pycache__/
-*.pkl
+
 *.png
 *.svg
 .streamlit/
