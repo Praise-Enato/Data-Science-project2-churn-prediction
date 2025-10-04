@@ -65,28 +65,33 @@ def make_models(class_weight_balanced=True, scale_pos_weight: float = 1.0) -> Di
         class_weight="balanced" if class_weight_balanced else None,
         n_jobs=None,
     )
+    # RandomForest
     models["rf"] = RandomForestClassifier(
-        n_estimators=400,
+        n_estimators=600,
         max_depth=None,
         min_samples_split=2,
-        min_samples_leaf=1,
+        min_samples_leaf=2,         # a touch of regularization
+        max_features="sqrt",        # classic RF setting
         n_jobs=-1,
-        class_weight="balanced" if class_weight_balanced else None,
+        class_weight=None,          # try None first; 'balanced' can hurt on OHE
         random_state=42,
     )
     try:
         from xgboost import XGBClassifier
+        # XGBoost
         models["xgb"] = XGBClassifier(
-            n_estimators=500,
-            max_depth=5,
-            learning_rate=0.08,
-            subsample=0.9,
-            colsample_bytree=0.9,
+            n_estimators=600,
+            max_depth=6,
+            learning_rate=0.07,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            min_child_weight=1,
             reg_lambda=1.0,
+            reg_alpha=0.0,
             random_state=42,
             tree_method="hist",
-            eval_metric="logloss",
-            scale_pos_weight=scale_pos_weight,
+            eval_metric="auc",          # optimize ranking quality
+            scale_pos_weight=scale_pos_weight,  # keep this computed from y_train
         )
     except Exception as e:
         print("⚠️ XGBoost not available, skipping XGB. Error:\n", e)
@@ -240,12 +245,11 @@ def main():
 
     test_edge_case(best_pipe)
 
-    # --------- EXTRA: Save per-model TEST metrics + ROC points for app comparison/ROC plots ---------
+    # --------- Save per-model TEST metrics + ROC points for app comparison/ROC plots ---------
     all_metrics = {}
     roc_bundle = {}
 
     for name, pipe in pipes.items():
-        # Skip if pipeline wasn't created (e.g., xgb missing)
         if pipe is None:
             continue
 
@@ -258,11 +262,11 @@ def main():
         else:
             probs = pipe.predict(X_test).astype(float)
 
-        # Use the best model's threshold for apples-to-apples comparison
-        m_test = evaluate(y_test.values, probs, threshold=thr)
-        m_test["used_threshold"] = thr
+        # Use THIS model's validation-chosen threshold
+        thr_m = per_model[name]["val"]["chosen_threshold"]
+        m_test = evaluate(y_test.values, probs, threshold=thr_m)
+        m_test["used_threshold"] = thr_m
 
-        # For validation metrics we already stored in per_model[name]["val"]
         all_metrics[name] = {
             "val": per_model[name]["val"],
             "test": m_test

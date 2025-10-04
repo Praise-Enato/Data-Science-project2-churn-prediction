@@ -299,6 +299,33 @@ def pretty_metrics_row(name, m):
         "TN": m.get("tn", None), "FN": m.get("fn", None),
     }
 
+
+def render_clv_plot_inline():
+    """Build the CLV quartile churn chart directly from the train split (no PNG needed)."""
+    try:
+        train, _, _ = load_processed_splits()
+        if "CLV" not in train.columns or "ChurnFlag" not in train.columns:
+            st.warning("CLV or ChurnFlag not in processed train data.")
+            return
+
+        # 4 equal-sized buckets by CLV
+        quart = pd.qcut(train["CLV"], 4, labels=["Low", "Medium", "High", "Premium"])
+        tmp = train.assign(CLV_quartile=quart)
+
+        agg = (
+            tmp.groupby("CLV_quartile")["ChurnFlag"].agg(size="count", churn_rate="mean").reset_index()
+        )
+        agg["churn_rate"] = agg["churn_rate"].astype(float)
+
+        fig, ax = plt.subplots(figsize=(6, 3.5))
+        ax.bar(agg["CLV_quartile"], agg["churn_rate"])
+        ax.set_ylabel("Churn rate")
+        ax.set_title("Churn rate by CLV quartile (train)")
+        ax.set_ylim(0, max(0.01, agg["churn_rate"].max()) * 1.15)
+        st.pyplot(fig)
+    except Exception as e:
+        st.warning(f"Could not build CLV plot: {e}")
+
 # ---------------------------------------------------------------
 # Sidebar — About
 # ---------------------------------------------------------------
@@ -619,7 +646,8 @@ with tabs[2]:
     if os.path.exists(CLV_QUARTILE_PLOT):
         st.image(CLV_QUARTILE_PLOT, caption="Churn rate by CLV quartile (train)")
     else:
-        st.warning("CLV plot not found. Run `python -m src.clv_analysis` to generate it.")
+        st.info("CLV plot file not found. Building it on the fly…")
+        render_clv_plot_inline()
     st.markdown("</div>", unsafe_allow_html=True)
 
     # Optional stats preview (friendlier labels)
