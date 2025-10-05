@@ -1,6 +1,7 @@
 # app.py
 # Customer Churn Prediction & CLV — Streamlit App
 # Polished UI + per-feature explanation (LogReg) + optional isotonic calibration
+# + CLV inline fallback so Cloud deploys always show the CLV chart
 
 import os
 import re
@@ -11,7 +12,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import streamlit as st
 from sklearn.calibration import CalibratedClassifierCV
-from sklearn.metrics import precision_recall_fscore_support, roc_auc_score, confusion_matrix
+from sklearn.metrics import precision_recall_fscore_support, roc_auc_score, confusion_matrix, roc_curve
 
 # ---------------------------------------------------------------
 # Page config + light CSS polish
@@ -56,7 +57,7 @@ PROCESSED_DIR = "data/processed"
 FIG_DIR = "figures"
 
 BEST_MODEL_PATH = os.path.join(MODELS_DIR, "logreg_pipeline.pkl")
-METRICS_PATH = os.path.join(MODELS_DIR, "logreg_metrics.json")
+METRICS_PATH   = os.path.join(MODELS_DIR, "logreg_metrics.json")
 CLV_QUARTILE_PLOT = os.path.join(FIG_DIR, "churn_rate_by_clv_quartile.png")
 
 # Operating threshold picked on validation during training
@@ -118,8 +119,8 @@ def load_metrics():
 @st.cache_data
 def load_processed_splits():
     train_p = os.path.join(PROCESSED_DIR, "train.csv")
-    val_p = os.path.join(PROCESSED_DIR, "val.csv")
-    test_p = os.path.join(PROCESSED_DIR, "test.csv")
+    val_p   = os.path.join(PROCESSED_DIR, "val.csv")
+    test_p  = os.path.join(PROCESSED_DIR, "test.csv")
     if not (os.path.exists(train_p) and os.path.exists(val_p) and os.path.exists(test_p)):
         raise FileNotFoundError(
             f"Processed splits not found in {PROCESSED_DIR}. "
@@ -154,7 +155,6 @@ def predict_single(pipe, payload: dict) -> dict:
 
 # --- Feature name recovery & pretty-printing for the explainer ---
 def _get_feature_names(preprocessor) -> list:
-    # sklearn >= 1.0 has get_feature_names_out; fall back if needed
     try:
         return preprocessor.get_feature_names_out().tolist()
     except Exception:
@@ -264,11 +264,12 @@ def _format_or(or_val: float) -> str:
 def build_calibrated_model_from_validation(_pipe, _val_df: pd.DataFrame, method: str = "isotonic"):
     """
     Fits an isotonic calibration layer using the validation split (cv='prefit').
-    We underscore args so Streamlit won't try to hash them.
+    Underscore-args prevent Streamlit from hashing unhashable objects in the cache key.
+    Works across sklearn versions (estimator/base_estimator).
     """
     pipe, val_df = _pipe, _val_df
 
-    pre = pipe.named_steps["pre"]
+    pre  = pipe.named_steps["pre"]
     base = pipe.named_steps["model"]
     if not hasattr(base, "predict_proba"):
         raise ValueError("Calibration requires a probabilistic classifier.")
@@ -277,12 +278,17 @@ def build_calibrated_model_from_validation(_pipe, _val_df: pd.DataFrame, method:
     X_val = val_df.drop(columns=["ChurnFlag"])
     X_val_pre = pre.transform(X_val)
 
-    calib = CalibratedClassifierCV(base_estimator=base, cv="prefit", method=method)
+    # sklearn version compatibility: 'estimator' (new) vs 'base_estimator' (old)
+    try:
+        calib = CalibratedClassifierCV(estimator=base, cv="prefit", method=method)
+    except TypeError:
+        calib = CalibratedClassifierCV(base_estimator=base, cv="prefit", method=method)
+
     calib.fit(X_val_pre, y_val)
     return {"pre": pre, "calib": calib}
 
 def calibrated_predict_proba(calib_bundle, X_df: pd.DataFrame) -> np.ndarray:
-    pre = calib_bundle["pre"]
+    pre   = calib_bundle["pre"]
     calib = calib_bundle["calib"]
     X_pre = pre.transform(X_df)
     return calib.predict_proba(X_pre)[:, 1]
@@ -299,22 +305,19 @@ def pretty_metrics_row(name, m):
         "TN": m.get("tn", None), "FN": m.get("fn", None),
     }
 
-
+# ---- CLV inline fallback (build chart even if PNG missing) ----
 def render_clv_plot_inline():
     """Build the CLV quartile churn chart directly from the train split (no PNG needed)."""
     try:
         train, _, _ = load_processed_splits()
         if "CLV" not in train.columns or "ChurnFlag" not in train.columns:
-            st.warning("CLV or ChurnFlag not in processed train data.")
-            return
+            st.warning("CLV or ChurnFlag not in processed train data."); return
 
-        # 4 equal-sized buckets by CLV
         quart = pd.qcut(train["CLV"], 4, labels=["Low", "Medium", "High", "Premium"])
         tmp = train.assign(CLV_quartile=quart)
-
-        agg = (
-            tmp.groupby("CLV_quartile")["ChurnFlag"].agg(size="count", churn_rate="mean").reset_index()
-        )
+        agg = (tmp.groupby("CLV_quartile")["ChurnFlag"]
+                 .agg(size="count", churn_rate="mean")
+                 .reset_index())
         agg["churn_rate"] = agg["churn_rate"].astype(float)
 
         fig, ax = plt.subplots(figsize=(6, 3.5))
@@ -385,7 +388,7 @@ with tabs[0]:
     with st.form("predict_form", clear_on_submit=False):
         c1, c2, c3 = st.columns(3)
         with c1:
-            tenure = st.slider("Tenure (months)", 0, 72, st.session_state.get("tenure", 2))
+            tenure  = st.slider("Tenure (months)", 0, 72, st.session_state.get("tenure", 2))
             monthly = st.slider("Monthly Charges ($)", 0, 200, int(st.session_state.get("monthly", 105.0)))
         with c2:
             contract_opts = ["Month-to-month", "One year", "Two year"]
@@ -398,9 +401,9 @@ with tabs[0]:
             payment_method = st.selectbox("Payment Method", pm_opts,
                                     index=pm_opts.index(st.session_state.get("payment_method","Electronic check")))
         with c3:
-            senior = st.toggle("Senior Citizen", value=st.session_state.get("senior", False))
+            senior    = st.toggle("Senior Citizen", value=st.session_state.get("senior", False))
             paperless = st.toggle("Paperless Billing", value=st.session_state.get("paperless", False))
-            gender = st.selectbox("Gender", ["Female","Male"],
+            gender    = st.selectbox("Gender", ["Female","Male"],
                                   index=["Female","Male"].index(st.session_state.get("gender","Female")))
 
         st.divider()
@@ -417,7 +420,7 @@ with tabs[0]:
             devprot = st.toggle("Device Protection", value=st.session_state.get("devprot", False))
             techsup = st.toggle("Tech Support", value=st.session_state.get("techsup", False))
         with s4:
-            stv = st.toggle("Streaming TV", value=st.session_state.get("stv", False))
+            stv  = st.toggle("Streaming TV", value=st.session_state.get("stv", False))
             smov = st.toggle("Streaming Movies", value=st.session_state.get("smov", False))
 
         submitted = st.form_submit_button("Predict Churn", use_container_width=True)
@@ -529,32 +532,22 @@ with tabs[1]:
 
         st.markdown('<div class="card section">', unsafe_allow_html=True)
         st.dataframe(
-            dfm.rename(columns={
-                "Precision": "Precision",
-                "Recall": "Recall",
-                "F1": "F1-score",
-                "AUC": "ROC-AUC",
-                "Thr": "Threshold",
-            }),
+            dfm.rename(columns={"F1": "F1-score", "AUC": "ROC-AUC", "Thr": "Threshold"}),
             use_container_width=True, hide_index=True
         )
         st.markdown("</div>", unsafe_allow_html=True)
-        st.caption(
-            "Validation chose the threshold to satisfy recall \u2265 0.60 and maximize F1 among those thresholds. "
-            "We froze that threshold and reported metrics on test."
-        )
+        st.caption("Validation chose the threshold to satisfy recall ≥ 0.60 and maximize F1 among those thresholds. "
+                   "We froze that threshold and reported metrics on test.")
 
-        # ---- Model comparison (Test) + ROC overlay (Test) ----
-        import json
-
-        # Comparison table (uses models/metrics_all.json produced by src.model_train)
-        if os.path.exists(os.path.join(MODELS_DIR, "metrics_all.json")):
-            with open(os.path.join(MODELS_DIR, "metrics_all.json")) as f:
+        # ---- Model comparison (Test) ----
+        mm_path = os.path.join(MODELS_DIR, "metrics_all.json")
+        if os.path.exists(mm_path):
+            with open(mm_path) as f:
                 mm = json.load(f)
 
-            rows = []
-            order = ["logreg", "rf", "xgb"]  # show in a nice order if present
+            order = ["logreg", "rf", "xgb"]
             label = {"logreg": "LOGREG", "rf": "RANDOM FOREST", "xgb": "XGBOOST"}
+            rows = []
             for m in order:
                 if m in mm and "test" in mm[m]:
                     t = mm[m]["test"]
@@ -566,27 +559,23 @@ with tabs[1]:
                         "ROC-AUC": round(float(t.get("auc", float("nan"))), 3),
                         "Threshold": round(float(t.get("used_threshold", 0.5)), 2),
                     })
-
             if rows:
                 st.markdown("**Model comparison (Test)**")
                 st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
-        # ROC overlay (uses models/roc_curves_test.json produced by src.model_train)
-        if os.path.exists(os.path.join(MODELS_DIR, "roc_curves_test.json")):
-            with open(os.path.join(MODELS_DIR, "roc_curves_test.json")) as f:
+        # ---- ROC overlay (Test) ----
+        rc_path = os.path.join(MODELS_DIR, "roc_curves_test.json")
+        if os.path.exists(rc_path):
+            with open(rc_path) as f:
                 rc = json.load(f)
-
             if rc:
                 fig = plt.figure()
                 for name, pts in rc.items():
                     plt.plot(pts["fpr"], pts["tpr"], label=name.upper())
                 plt.plot([0, 1], [0, 1], linestyle="--", linewidth=1)
-                plt.xlabel("False Positive Rate")
-                plt.ylabel("True Positive Rate")
-                plt.title("ROC (Test)")
-                plt.legend()
+                plt.xlabel("False Positive Rate"); plt.ylabel("True Positive Rate")
+                plt.title("ROC (Test)"); plt.legend()
                 st.pyplot(fig)
-
 
         # ----- Optional: compare calibrated probabilities -----
         st.markdown("##### Optional: Compare calibrated probabilities")

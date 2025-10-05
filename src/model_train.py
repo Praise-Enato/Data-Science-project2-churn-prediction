@@ -65,20 +65,20 @@ def make_models(class_weight_balanced=True, scale_pos_weight: float = 1.0) -> Di
         class_weight="balanced" if class_weight_balanced else None,
         n_jobs=None,
     )
-    # RandomForest
+    # --- stronger, safe baseline for RF ---
     models["rf"] = RandomForestClassifier(
         n_estimators=600,
         max_depth=None,
         min_samples_split=2,
-        min_samples_leaf=2,         # a touch of regularization
-        max_features="sqrt",        # classic RF setting
+        min_samples_leaf=2,
+        max_features="sqrt",
         n_jobs=-1,
-        class_weight=None,          # try None first; 'balanced' can hurt on OHE
+        class_weight=None,      # try 'balanced' if recall is too low
         random_state=42,
     )
     try:
         from xgboost import XGBClassifier
-        # XGBoost
+        # --- stronger, safe baseline for XGB ---
         models["xgb"] = XGBClassifier(
             n_estimators=600,
             max_depth=6,
@@ -90,8 +90,8 @@ def make_models(class_weight_balanced=True, scale_pos_weight: float = 1.0) -> Di
             reg_alpha=0.0,
             random_state=42,
             tree_method="hist",
-            eval_metric="auc",          # optimize ranking quality
-            scale_pos_weight=scale_pos_weight,  # keep this computed from y_train
+            eval_metric="auc",
+            scale_pos_weight=scale_pos_weight,
         )
     except Exception as e:
         print("⚠️ XGBoost not available, skipping XGB. Error:\n", e)
@@ -139,7 +139,6 @@ def fit_and_select_model(train: pd.DataFrame, val: pd.DataFrame, recall_floor=0.
     models = make_models(class_weight_balanced=True, scale_pos_weight=spw)
 
     best_name, best_pipe, best_metrics = None, None, {"f1": -1}
-    # For saving per-model validation metrics and pipelines
     per_model = {}
     pipes = {}
 
@@ -152,7 +151,7 @@ def fit_and_select_model(train: pd.DataFrame, val: pd.DataFrame, recall_floor=0.
         if hasattr(pipe.named_steps["model"], "predict_proba"):
             val_probs = pipe.predict_proba(X_val)[:, 1]
         elif hasattr(pipe.named_steps["model"], "decision_function"):
-            scores = pipe.decision_function(X_val)
+            scores = pipe.named_steps["model"].decision_function(X_val)
             val_probs = (scores - scores.min()) / (scores.max() - scores.min() + 1e-9)
         else:
             val_probs = pipe.predict(X_val).astype(float)
@@ -205,7 +204,7 @@ def main():
     pretty = {k: round(v, 4) if isinstance(v, float) else v for k, v in test_metrics_best.items()}
     print(pretty)
 
-    # Edge-case sanity check (kept from earlier)
+    # Edge-case sanity check
     def test_edge_case(pipe: Pipeline):
         sample = {
             "tenure": 2,
@@ -253,7 +252,7 @@ def main():
         if pipe is None:
             continue
 
-        # Test probabilities for each model
+        # Test probabilities
         if hasattr(pipe.named_steps["model"], "predict_proba"):
             probs = pipe.predict_proba(X_test)[:, 1]
         elif hasattr(pipe.named_steps["model"], "decision_function"):
@@ -262,15 +261,12 @@ def main():
         else:
             probs = pipe.predict(X_test).astype(float)
 
-        # Use THIS model's validation-chosen threshold
+        # Use THIS model's own validation-chosen threshold
         thr_m = per_model[name]["val"]["chosen_threshold"]
         m_test = evaluate(y_test.values, probs, threshold=thr_m)
         m_test["used_threshold"] = thr_m
 
-        all_metrics[name] = {
-            "val": per_model[name]["val"],
-            "test": m_test
-        }
+        all_metrics[name] = {"val": per_model[name]["val"], "test": m_test}
 
         fpr, tpr, _ = roc_curve(y_test.values, probs)
         roc_bundle[name] = {"fpr": fpr.tolist(), "tpr": tpr.tolist()}
