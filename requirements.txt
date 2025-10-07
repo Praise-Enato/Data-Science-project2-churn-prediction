@@ -7,3 +7,5 @@ matplotlib
 streamlit
 joblib
 seaborn
+shap
+xgboost

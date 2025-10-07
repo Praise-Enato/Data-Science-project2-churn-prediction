@@ -1,6 +1,6 @@
 [theme]
-primaryColor="#7C4DFF"
-backgroundColor="#0E0F14"
-secondaryBackgroundColor="#181A22"
-textColor="#EAEAF2"
-font="sans serif"
+primaryColor = "#7C4DFF"          # purple accent
+backgroundColor = "#0B1220"       # deep navy
+secondaryBackgroundColor = "#121B2E"
+textColor = "#E6EAF2"
+font = "Inter"

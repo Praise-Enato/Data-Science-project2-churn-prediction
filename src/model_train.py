@@ -1,281 +1,333 @@
 # src/model_train.py
-from __future__ import annotations
+# Train LogReg, RandomForest, and XGBoost with light tuning + imbalance care.
+# Select a recall-first operating threshold on validation, then freeze for test.
+# Saves:
+#   models/logreg_pipeline.pkl              (best model = usually LOGREG here)
+#   models/logreg_metrics.json              (chosen/best model metrics)
+#   models/metrics_all.json                 (per-model val/test)
+#   models/roc_curves_test.json             (for the ROC overlay in the app)
+
 import os
 import json
-import numpy as np
-import pandas as pd
+import warnings
+from dataclasses import dataclass
 from typing import Dict, Tuple
 
+import numpy as np
+import pandas as pd
 from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import OneHotEncoder
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.pipeline import Pipeline
-from sklearn.impute import SimpleImputer
-from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import (
     precision_recall_fscore_support,
     roc_auc_score,
-    confusion_matrix,
     roc_curve,
+    confusion_matrix,
 )
-import joblib
-import warnings
-warnings.filterwarnings("ignore", message="The default of observed=False", category=FutureWarning)
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
 
-PROCESSED_DIR = "data/processed"
+# Optional: XGBoost (skip gracefully if not present)
+try:
+    from xgboost import XGBClassifier
+    _HAS_XGB = True
+except Exception as e:
+    _HAS_XGB = False
+    _XGB_ERR = str(e)
+
+warnings.filterwarnings("ignore")
+
 MODELS_DIR = "models"
+DATA_DIR = "data/processed"
 os.makedirs(MODELS_DIR, exist_ok=True)
 
-def load_splits(processed_dir: str = PROCESSED_DIR) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    train = pd.read_csv(os.path.join(processed_dir, "train.csv"))
-    val = pd.read_csv(os.path.join(processed_dir, "val.csv"))
-    test = pd.read_csv(os.path.join(processed_dir, "test.csv"))
+VAL_RECALL_MIN = 0.60  # recall-first policy on validation
+THRESH_GRID = np.round(np.linspace(0.30, 0.80, 51), 3)  # 0.30 → 0.80 (step ~0.01)
+RANDOM_STATE = 42
+
+
+# ------------------------- Data Loading -------------------------
+def _load_splits() -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    paths = [os.path.join(DATA_DIR, f) for f in ["train.csv", "val.csv", "test.csv"]]
+    if not all(os.path.exists(p) for p in paths):
+        raise FileNotFoundError(
+            f"Processed splits not found in {DATA_DIR}. Run: python -m src.data_prep"
+        )
+    train = pd.read_csv(paths[0])
+    val   = pd.read_csv(paths[1])
+    test  = pd.read_csv(paths[2])
     return train, val, test
 
-def split_X_y(df: pd.DataFrame, target: str = "ChurnFlag") -> Tuple[pd.DataFrame, pd.Series]:
-    X = df.drop(columns=[target])
-    y = df[target].astype(int)
-    return X, y
 
-def detect_columns(X: pd.DataFrame) -> Tuple[list, list]:
-    numeric_cols = X.select_dtypes(include=["number", "bool"]).columns.tolist()
-    categorical_cols = X.select_dtypes(include=["object", "category"]).columns.tolist()
-    return numeric_cols, categorical_cols
+# ------------------------- Features -------------------------
+def _feature_lists(df: pd.DataFrame) -> Tuple[list, list]:
+    # Numeric engineered features you created in data_prep.py
+    num_cols = [
+        "tenure",
+        "MonthlyCharges",
+        "TotalCharges",
+        "CLV",
+        "services_count",
+        "monthly_to_total_ratio",
+        "internet_no_tech_support",
+    ]
+    # Categorical features
+    cat_cols = [
+        "gender",
+        "SeniorCitizen",           # treat as categorical (0/1)
+        "Partner",
+        "Dependents",
+        "PhoneService",
+        "MultipleLines",
+        "InternetService",
+        "OnlineSecurity",
+        "OnlineBackup",
+        "DeviceProtection",
+        "TechSupport",
+        "StreamingTV",
+        "StreamingMovies",
+        "Contract",
+        "PaperlessBilling",
+        "PaymentMethod",
+        "tenure_bucket",
+    ]
+    # Keep only columns that actually exist
+    num_cols = [c for c in num_cols if c in df.columns]
+    cat_cols = [c for c in cat_cols if c in df.columns]
+    return num_cols, cat_cols
 
-def build_preprocessor(numeric_cols, categorical_cols) -> ColumnTransformer:
-    numeric_tf = Pipeline(steps=[
-        ("imputer", SimpleImputer(strategy="median")),
-    ])
-    categorical_tf = Pipeline(steps=[
-        ("imputer", SimpleImputer(strategy="most_frequent")),
-        ("ohe", OneHotEncoder(handle_unknown="ignore")),
-    ])
-    preprocessor = ColumnTransformer(
+
+def _preprocessor(num_cols: list, cat_cols: list) -> ColumnTransformer:
+    num_pipe = Pipeline([("scaler", StandardScaler())])
+    cat_pipe = Pipeline([("ohe", OneHotEncoder(handle_unknown="ignore", sparse=True))])
+    pre = ColumnTransformer(
         transformers=[
-            ("num", numeric_tf, numeric_cols),
-            ("cat", categorical_tf, categorical_cols),
-        ]
+            ("num", num_pipe, num_cols),
+            ("cat", cat_pipe, cat_cols),
+        ],
+        remainder="drop",
+        sparse_threshold=0.3,
     )
-    return preprocessor
+    return pre
 
-def make_models(class_weight_balanced=True, scale_pos_weight: float = 1.0) -> Dict[str, object]:
-    models = {}
-    models["logreg"] = LogisticRegression(
-        max_iter=500,
-        class_weight="balanced" if class_weight_balanced else None,
+
+# ------------------------- Models -------------------------
+def make_logreg() -> LogisticRegression:
+    # class_weight balances the minority (churn) class
+    return LogisticRegression(
+        penalty="l2",
+        C=1.0,
+        solver="lbfgs",
+        max_iter=1000,
+        class_weight="balanced",
         n_jobs=None,
+        random_state=RANDOM_STATE,
     )
-    # --- stronger, safe baseline for RF ---
-    models["rf"] = RandomForestClassifier(
+
+
+def make_rf() -> RandomForestClassifier:
+    # Light tuning that generalizes well on Telco; balanced_subsample helps imbalance
+    return RandomForestClassifier(
         n_estimators=600,
-        max_depth=None,
-        min_samples_split=2,
-        min_samples_leaf=2,
-        max_features="sqrt",
+        max_depth=10,
+        min_samples_leaf=20,
+        class_weight="balanced_subsample",
         n_jobs=-1,
-        class_weight=None,      # try 'balanced' if recall is too low
-        random_state=42,
+        random_state=RANDOM_STATE,
     )
-    try:
-        from xgboost import XGBClassifier
-        # --- stronger, safe baseline for XGB ---
-        models["xgb"] = XGBClassifier(
-            n_estimators=600,
-            max_depth=6,
-            learning_rate=0.07,
-            subsample=0.8,
-            colsample_bytree=0.8,
-            min_child_weight=1,
-            reg_lambda=1.0,
-            reg_alpha=0.0,
-            random_state=42,
-            tree_method="hist",
-            eval_metric="auc",
-            scale_pos_weight=scale_pos_weight,
-        )
-    except Exception as e:
-        print("⚠️ XGBoost not available, skipping XGB. Error:\n", e)
-    return models
 
-def threshold_search(y_true: np.ndarray, probs: np.ndarray, recall_floor=0.60) -> Dict[str, float]:
-    best = {"threshold": 0.5, "precision": 0.0, "recall": 0.0, "f1": 0.0}
-    for thr in np.linspace(0.1, 0.9, 81):
-        preds = (probs >= thr).astype(int)
-        p, r, f1, _ = precision_recall_fscore_support(y_true, preds, average="binary", zero_division=0)
-        if r >= recall_floor and f1 > best["f1"]:
-            best = {"threshold": float(thr), "precision": float(p), "recall": float(r), "f1": float(f1)}
-    return best
 
-def evaluate(y_true: np.ndarray, probs: np.ndarray, threshold: float) -> Dict[str, float]:
-    preds = (probs >= threshold).astype(int)
-    p, r, f1, _ = precision_recall_fscore_support(y_true, preds, average="binary", zero_division=0)
-    try:
-        auc = roc_auc_score(y_true, probs)
-    except Exception:
-        auc = float("nan")
-    tn, fp, fn, tp = confusion_matrix(y_true, preds).ravel()
+def make_xgb(scale_pos_weight: float):
+    # Common, robust defaults + early stopping (handled in fit block)
+    return XGBClassifier(
+        n_estimators=800,
+        learning_rate=0.05,
+        max_depth=5,
+        min_child_weight=4,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        reg_lambda=2.0,
+        gamma=0.0,
+        objective="binary:logistic",
+        eval_metric="auc",
+        scale_pos_weight=scale_pos_weight,
+        random_state=RANDOM_STATE,
+        tree_method="hist",
+        n_jobs=-1,
+        verbosity=0,
+    )
+
+
+# ------------------------- Metrics & Thresholds -------------------------
+@dataclass
+class EvalResult:
+    metrics_val: Dict
+    metrics_test: Dict
+    thr: float
+    roc_test: Dict[str, list]
+
+
+def _bin_metrics(y_true, y_prob, thr) -> Dict:
+    y_pred = (y_prob >= thr).astype(int)
+    p, r, f1, _ = precision_recall_fscore_support(
+        y_true, y_pred, average="binary", zero_division=0
+    )
+    auc = roc_auc_score(y_true, y_prob)
+    tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
     return {
         "precision": float(p),
         "recall": float(r),
         "f1": float(f1),
         "auc": float(auc),
         "tn": int(tn), "fp": int(fp), "fn": int(fn), "tp": int(tp),
+        "used_threshold": float(thr),
     }
 
-def fit_and_select_model(train: pd.DataFrame, val: pd.DataFrame, recall_floor=0.60):
-    # Split
-    X_train, y_train = split_X_y(train)
-    X_val, y_val = split_X_y(val)
 
-    # Columns & preprocessing
-    num_cols, cat_cols = detect_columns(X_train)
-    pre = build_preprocessor(num_cols, cat_cols)
+def _choose_threshold_recall_first(y_true, y_prob, recall_min=VAL_RECALL_MIN):
+    best_thr = 0.50
+    best_f1 = -1.0
+    met = None
+    for thr in THRESH_GRID:
+        m = _bin_metrics(y_true, y_prob, thr)
+        if m["recall"] >= recall_min and m["f1"] > best_f1:
+            best_f1 = m["f1"]
+            best_thr = thr
+            met = m
+    if met is None:
+        # If no threshold reaches target recall, fall back to best f1 overall
+        for thr in THRESH_GRID:
+            m = _bin_metrics(y_true, y_prob, thr)
+            if m["f1"] > best_f1:
+                best_f1 = m["f1"]; best_thr = thr; met = m
+    return best_thr, met
 
-    # Imbalance ratio for XGB
-    pos = y_train.sum()
-    neg = len(y_train) - pos
-    spw = (neg / pos) if pos > 0 else 1.0
 
-    models = make_models(class_weight_balanced=True, scale_pos_weight=spw)
+def _roc_points(y_true, y_prob) -> Tuple[list, list]:
+    fpr, tpr, _ = roc_curve(y_true, y_prob)
+    return list(map(float, fpr)), list(map(float, tpr))
 
-    best_name, best_pipe, best_metrics = None, None, {"f1": -1}
-    per_model = {}
-    pipes = {}
 
-    for name, model in models.items():
-        pipe = Pipeline(steps=[("pre", pre), ("model", model)])
-        pipe.fit(X_train, y_train)
-        pipes[name] = pipe
+# ------------------------- Train/Eval -------------------------
+def train_and_eval():
+    train, val, test = _load_splits()
+    y_tr = train["ChurnFlag"].astype(int).values
+    y_va = val["ChurnFlag"].astype(int).values
+    y_te = test["ChurnFlag"].astype(int).values
 
-        # Validation probabilities
-        if hasattr(pipe.named_steps["model"], "predict_proba"):
-            val_probs = pipe.predict_proba(X_val)[:, 1]
-        elif hasattr(pipe.named_steps["model"], "decision_function"):
-            scores = pipe.named_steps["model"].decision_function(X_val)
-            val_probs = (scores - scores.min()) / (scores.max() - scores.min() + 1e-9)
-        else:
-            val_probs = pipe.predict(X_val).astype(float)
+    X_tr = train.drop(columns=["ChurnFlag"])
+    X_va = val.drop(columns=["ChurnFlag"])
+    X_te = test.drop(columns=["ChurnFlag"])
 
-        # Choose threshold on validation with recall constraint
-        ts = threshold_search(y_val.values, val_probs, recall_floor=recall_floor)
-        metrics = evaluate(y_val.values, val_probs, threshold=ts["threshold"])
-        metrics.update({"chosen_threshold": ts["threshold"]})
+    num_cols, cat_cols = _feature_lists(train)
+    pre = _preprocessor(num_cols, cat_cols)
 
-        print(f"\n=== {name.upper()} (val) ===")
-        print({k: round(v, 4) if isinstance(v, float) else v for k, v in metrics.items()})
+    # Pos/neg counts for XGB scale_pos_weight
+    pos = int(y_tr.sum())
+    neg = int((y_tr == 0).sum())
+    spw = neg / max(1, pos)
 
-        per_model[name] = {"val": metrics}
+    results = {}
+    roc_dict = {}
 
-        if metrics["f1"] > best_metrics["f1"]:
-            best_name, best_pipe, best_metrics = name, pipe, metrics
+    # ---------- LOGREG ----------
+    logreg = make_logreg()
+    pipe_logreg = Pipeline(steps=[("pre", pre), ("model", logreg)])
+    pipe_logreg.fit(X_tr, y_tr)
 
-    return best_name, best_pipe, best_metrics, per_model, pipes
+    prob_va = pipe_logreg.predict_proba(X_va)[:, 1]
+    thr, met_val = _choose_threshold_recall_first(y_va, prob_va, VAL_RECALL_MIN)
+    prob_te = pipe_logreg.predict_proba(X_te)[:, 1]
+    met_test = _bin_metrics(y_te, prob_te, thr)
+    fpr, tpr = _roc_points(y_te, prob_te)
+    roc_dict["logreg"] = {"fpr": fpr, "tpr": tpr}
 
-def main():
-    train, val, test = load_splits()
-    best_name, best_pipe, best_val_metrics, per_model, pipes = fit_and_select_model(train, val, recall_floor=0.60)
+    results["logreg"] = {"val": met_val, "test": met_test, "thr": thr}
 
-    # Save the best pipeline
-    model_path = os.path.join(MODELS_DIR, f"{best_name}_pipeline.pkl")
-    joblib.dump(best_pipe, model_path)
-    print(f"\n✅ Saved best model pipeline to: {model_path}")
+    # ---------- RANDOM FOREST ----------
+    rf = make_rf()
+    pipe_rf = Pipeline(steps=[("pre", pre), ("model", rf)])
+    pipe_rf.fit(X_tr, y_tr)
 
-    # Evaluate on TEST using the chosen threshold from best model (validation)
-    X_test, y_test = split_X_y(test)
-    if hasattr(best_pipe.named_steps["model"], "predict_proba"):
-        test_probs_best = best_pipe.predict_proba(X_test)[:, 1]
-    elif hasattr(best_pipe.named_steps["model"], "decision_function"):
-        scores = best_pipe.named_steps["model"].decision_function(X_test)
-        test_probs_best = (scores - scores.min()) / (scores.max() - scores.min() + 1e-9)
+    prob_va = pipe_rf.predict_proba(X_va)[:, 1]
+    thr_rf, met_val_rf = _choose_threshold_recall_first(y_va, prob_va, VAL_RECALL_MIN)
+    prob_te = pipe_rf.predict_proba(X_te)[:, 1]
+    met_test_rf = _bin_metrics(y_te, prob_te, thr_rf)
+    fpr, tpr = _roc_points(y_te, prob_te)
+    roc_dict["rf"] = {"fpr": fpr, "tpr": tpr}
+    results["rf"] = {"val": met_val_rf, "test": met_test_rf, "thr": thr_rf}
+
+    # ---------- XGBOOST (optional) ----------
+    if _HAS_XGB:
+        xgb = make_xgb(spw)
+        # Fit XGB with early stopping on validation
+        # We pass the preprocessed arrays explicitly to leverage early stopping.
+        X_tr_pre = pipe_logreg.named_steps["pre"].fit_transform(X_tr)  # reuse pre to get feature matrix
+        X_va_pre = pipe_logreg.named_steps["pre"].transform(X_va)
+
+        xgb.fit(
+            X_tr_pre, y_tr,
+            eval_set=[(X_va_pre, y_va)],
+            verbose=False,
+            early_stopping_rounds=50,
+        )
+        # Build a pipeline wrapper so app can use a consistent interface
+        pipe_xgb = Pipeline(steps=[("pre", pre), ("model", xgb)])
+
+        prob_va = pipe_xgb.predict_proba(X_va)[:, 1]
+        thr_xgb, met_val_xgb = _choose_threshold_recall_first(y_va, prob_va, VAL_RECALL_MIN)
+        prob_te = pipe_xgb.predict_proba(X_te)[:, 1]
+        met_test_xgb = _bin_metrics(y_te, prob_te, thr_xgb)
+        fpr, tpr = _roc_points(y_te, prob_te)
+        roc_dict["xgb"] = {"fpr": fpr, "tpr": tpr}
+        results["xgb"] = {"val": met_val_xgb, "test": met_test_xgb, "thr": thr_xgb}
     else:
-        test_probs_best = best_pipe.predict(X_test).astype(float)
+        print(f"⚠️ XGBoost not available, skipping. Error: {_XGB_ERR}")
 
-    thr = best_val_metrics["chosen_threshold"]
-    test_metrics_best = evaluate(y_test.values, test_probs_best, threshold=thr)
-    test_metrics_best["used_threshold"] = thr
+    # ---------------- Choose best model by validation F1 under recall constraint ----------------
+    # (You can change selection logic if the brief asks for a different tie-breaker.)
+    def key_fn(k):
+        return results[k]["val"]["f1"]
 
-    # Save metrics for the best model
-    metrics_path = os.path.join(MODELS_DIR, f"{best_name}_metrics.json")
-    with open(metrics_path, "w") as f:
-        json.dump({"val": best_val_metrics, "test": test_metrics_best}, f, indent=2)
-    print(f"📄 Saved metrics to: {metrics_path}")
+    best_name = max(results.keys(), key=key_fn)
+    best_thr = results[best_name]["thr"]
 
-    print(f"\n=== BEST MODEL: {best_name.upper()} (test at thr={thr:.2f}) ===")
-    pretty = {k: round(v, 4) if isinstance(v, float) else v for k, v in test_metrics_best.items()}
-    print(pretty)
+    # Save the *LogReg* pipeline as default (the app expects this path);
+    # if another model won, we still save the winning pipeline under this path for simplicity.
+    best_pipe = {
+        "logreg": pipe_logreg,
+        "rf": pipe_rf,
+        "xgb": pipe_xgb if _HAS_XGB else pipe_logreg,
+    }[best_name]
 
-    # Edge-case sanity check
-    def test_edge_case(pipe: Pipeline):
-        sample = {
-            "tenure": 2,
-            "MonthlyCharges": 105.0,
-            "TotalCharges": 210.0,
-            "CLV": 105.0 * 6,
-            "services_count": 1,
-            "monthly_to_total_ratio": 210.0 / max(1, 2 * 105.0),
-            "internet_no_tech_support": 1,
-            "gender": "Female",
-            "SeniorCitizen": 1,
-            "Partner": "No",
-            "Dependents": "No",
-            "PhoneService": "No",
-            "MultipleLines": "No phone service",
-            "InternetService": "Fiber optic",
-            "OnlineSecurity": "No",
-            "OnlineBackup": "No",
-            "DeviceProtection": "No",
-            "TechSupport": "No",
-            "StreamingTV": "No",
-            "StreamingMovies": "No",
-            "Contract": "Month-to-month",
-            "PaperlessBilling": "Yes",
-            "PaymentMethod": "Electronic check",
-            "tenure_bucket": "0-6m",
-        }
-        X = pd.DataFrame([sample])
-        if hasattr(pipe.named_steps["model"], "predict_proba"):
-            prob = pipe.predict_proba(X)[:, 1][0]
-        else:
-            pred = pipe.predict(X)[0]
-            prob = float(pred)
-        pred = int(prob >= 0.5)
-        print("\nEdge-case sanity check:")
-        print(f"Predicted churn prob ~ {prob:.3f}  -> class @0.5 = {pred} (1 means churn)")
+    # Persist the winning pipeline + its metrics
+    import joblib
+    joblib.dump(best_pipe, os.path.join(MODELS_DIR, "logreg_pipeline.pkl"))
 
-    test_edge_case(best_pipe)
+    with open(os.path.join(MODELS_DIR, "logreg_metrics.json"), "w") as f:
+        json.dump(
+            {
+                "val": results[best_name]["val"],
+                "test": results[best_name]["test"],
+                "used_threshold": best_thr,
+                "model_name": best_name,
+            },
+            f,
+            indent=2,
+        )
 
-    # --------- Save per-model TEST metrics + ROC points for app comparison/ROC plots ---------
-    all_metrics = {}
-    roc_bundle = {}
-
-    for name, pipe in pipes.items():
-        if pipe is None:
-            continue
-
-        # Test probabilities
-        if hasattr(pipe.named_steps["model"], "predict_proba"):
-            probs = pipe.predict_proba(X_test)[:, 1]
-        elif hasattr(pipe.named_steps["model"], "decision_function"):
-            scores = pipe.named_steps["model"].decision_function(X_test)
-            probs = (scores - scores.min()) / (scores.max() - scores.min() + 1e-9)
-        else:
-            probs = pipe.predict(X_test).astype(float)
-
-        # Use THIS model's own validation-chosen threshold
-        thr_m = per_model[name]["val"]["chosen_threshold"]
-        m_test = evaluate(y_test.values, probs, threshold=thr_m)
-        m_test["used_threshold"] = thr_m
-
-        all_metrics[name] = {"val": per_model[name]["val"], "test": m_test}
-
-        fpr, tpr, _ = roc_curve(y_test.values, probs)
-        roc_bundle[name] = {"fpr": fpr.tolist(), "tpr": tpr.tolist()}
-
+    # Persist per-model metrics for the app comparison table
     with open(os.path.join(MODELS_DIR, "metrics_all.json"), "w") as f:
-        json.dump(all_metrics, f, indent=2)
+        json.dump(results, f, indent=2)
+
+    # Persist ROC curves for the app overlay
     with open(os.path.join(MODELS_DIR, "roc_curves_test.json"), "w") as f:
-        json.dump(roc_bundle, f, indent=2)
-    print("📄 Saved models/metrics_all.json and models/roc_curves_test.json")
+        json.dump(roc_dict, f, indent=2)
+
+    # Convenience prints
+    print(f"\n=== BEST MODEL: {best_name.upper()} (test at thr={best_thr:.2f}) ===")
+    print(results[best_name]["test"])
+
 
 if __name__ == "__main__":
-    main()
+    train_and_eval()
