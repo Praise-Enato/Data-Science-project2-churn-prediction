@@ -4,3 +4,4 @@ __pycache__/
 *.png
 *.svg
 project2-churn-prediction.zip
+test_env

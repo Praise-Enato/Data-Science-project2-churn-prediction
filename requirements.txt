@@ -7,5 +7,4 @@ matplotlib
 streamlit
 joblib
 seaborn
-shap
-xgboost
+altair

@@ -52,6 +52,7 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
       - services_count
       - monthly_to_total_ratio
       - internet_no_tech_support (flag)
+      - Additional interaction/business signals to improve recall/precision
       - Map target y: Churn {No,Yes} -> {0,1}
     """
     df = df.copy()
@@ -83,6 +84,38 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
         (df["InternetService"].str.lower() != "no") &
         (df["TechSupport"].str.lower() == "no")
     ).astype(int)
+
+    # --- Additional engineered features to help the models ---
+    # Ordinal encoding of tenure bucket for linear models
+    tenure_ord = {"0-6m": 0, "6-12m": 1, "12-24m": 2, "24m+": 3}
+    df["tenure_bucket_ord"] = df["tenure_bucket"].map(tenure_ord).fillna(0).astype(int)
+
+    # Auto-pay indicator
+    autopay_methods = {"bank transfer (automatic)", "credit card (automatic)"}
+    df["is_auto_pay"] = df["PaymentMethod"].str.strip().str.lower().isin(autopay_methods).astype(int)
+
+    # Long contract indicator (one or two year contracts)
+    df["is_long_contract"] = df["Contract"].str.contains("year", case=False, na=False).astype(int)
+
+    # Streaming / support service counts
+    streaming_cols = ["StreamingTV", "StreamingMovies"]
+    support_cols = ["OnlineSecurity", "OnlineBackup", "DeviceProtection", "TechSupport"]
+    df["streaming_services"] = df[streaming_cols].applymap(lambda x: 1 if str(x).strip().lower() == "yes" else 0).sum(axis=1)
+    df["support_services"] = df[support_cols].applymap(lambda x: 1 if str(x).strip().lower() == "yes" else 0).sum(axis=1)
+
+    # Senior citizens on fiber optic internet (known high-risk segment)
+    df["senior_fiber_optic"] = (
+        (df["SeniorCitizen"] == 1) &
+        (df["InternetService"].str.strip().str.lower() == "fiber optic")
+    ).astype(int)
+
+    # Charges per tenure month (helps capture early high spenders)
+    df["charges_per_month_of_tenure"] = df["TotalCharges"] / df["tenure"].replace(0, 1)
+
+    # Indicator for high monthly charges relative to CLV (above median ratio)
+    clv_ratio = df["MonthlyCharges"] / df["CLV"].replace(0, 1)
+    median_ratio = clv_ratio.median()
+    df["high_charge_to_clv_ratio"] = (clv_ratio >= median_ratio).astype(int)
 
     # Target mapping
     df["ChurnFlag"] = (df["Churn"].str.strip().str.lower() == "yes").astype(int)
@@ -120,6 +153,9 @@ def select_model_columns(df: pd.DataFrame):
         # numerics
         "tenure", "MonthlyCharges", "TotalCharges", "CLV", "services_count",
         "monthly_to_total_ratio", "internet_no_tech_support",
+        "tenure_bucket_ord", "is_auto_pay", "is_long_contract",
+        "streaming_services", "support_services", "senior_fiber_optic",
+        "charges_per_month_of_tenure", "high_charge_to_clv_ratio",
         # categoricals (kept as strings for now; encoder later)
         "gender", "SeniorCitizen", "Partner", "Dependents",
         "PhoneService", "MultipleLines", "InternetService",

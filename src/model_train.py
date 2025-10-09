@@ -7,12 +7,14 @@
 #   models/metrics_all.json                 (per-model val/test)
 #   models/roc_curves_test.json             (for the ROC overlay in the app)
 
+import inspect
 import os
 import json
 import warnings
 from dataclasses import dataclass
 from typing import Dict, Tuple
 
+import joblib
 import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
@@ -98,8 +100,16 @@ def _feature_lists(df: pd.DataFrame) -> Tuple[list, list]:
 
 
 def _preprocessor(num_cols: list, cat_cols: list) -> ColumnTransformer:
+    # scikit-learn >=1.4 renamed `sparse` to `sparse_output`; handle both.
+    ohe_kwargs = {"handle_unknown": "ignore"}
+    if "sparse_output" in OneHotEncoder.__init__.__code__.co_varnames:
+        ohe_kwargs["sparse_output"] = True
+    else:
+        ohe_kwargs["sparse"] = True
+    cat_encoder = OneHotEncoder(**ohe_kwargs)
+
     num_pipe = Pipeline([("scaler", StandardScaler())])
-    cat_pipe = Pipeline([("ohe", OneHotEncoder(handle_unknown="ignore", sparse=True))])
+    cat_pipe = Pipeline([("ohe", cat_encoder)])
     pre = ColumnTransformer(
         transformers=[
             ("num", num_pipe, num_cols),
@@ -234,6 +244,7 @@ def train_and_eval():
     logreg = make_logreg()
     pipe_logreg = Pipeline(steps=[("pre", pre), ("model", logreg)])
     pipe_logreg.fit(X_tr, y_tr)
+    joblib.dump(pipe_logreg, os.path.join(MODELS_DIR, "logreg_baseline_pipeline.pkl"))
 
     prob_va = pipe_logreg.predict_proba(X_va)[:, 1]
     thr, met_val = _choose_threshold_recall_first(y_va, prob_va, VAL_RECALL_MIN)
@@ -256,6 +267,7 @@ def train_and_eval():
     fpr, tpr = _roc_points(y_te, prob_te)
     roc_dict["rf"] = {"fpr": fpr, "tpr": tpr}
     results["rf"] = {"val": met_val_rf, "test": met_test_rf, "thr": thr_rf}
+    joblib.dump(pipe_rf, os.path.join(MODELS_DIR, "rf_pipeline.pkl"))
 
     # ---------- XGBOOST (optional) ----------
     if _HAS_XGB:
@@ -265,12 +277,28 @@ def train_and_eval():
         X_tr_pre = pipe_logreg.named_steps["pre"].fit_transform(X_tr)  # reuse pre to get feature matrix
         X_va_pre = pipe_logreg.named_steps["pre"].transform(X_va)
 
-        xgb.fit(
-            X_tr_pre, y_tr,
-            eval_set=[(X_va_pre, y_va)],
-            verbose=False,
-            early_stopping_rounds=50,
-        )
+        # XGBoost>=2.1 prefers callbacks for early stopping; fall back for older versions.
+        fit_kwargs = {
+            "X": X_tr_pre,
+            "y": y_tr,
+            "eval_set": [(X_va_pre, y_va)],
+            "verbose": False,
+        }
+        fit_sig = inspect.signature(xgb.fit)
+        try:
+            if "callbacks" in fit_sig.parameters:
+                try:
+                    from xgboost.callback import EarlyStopping
+                    callbacks = [EarlyStopping(rounds=50, save_best=True)]
+                    xgb.fit(**fit_kwargs, callbacks=callbacks)
+                except Exception:
+                    xgb.fit(**fit_kwargs)
+            elif "early_stopping_rounds" in fit_sig.parameters:
+                xgb.fit(**fit_kwargs, early_stopping_rounds=50)
+            else:
+                xgb.fit(**fit_kwargs)
+        except TypeError:
+            xgb.fit(**fit_kwargs)
         # Build a pipeline wrapper so app can use a consistent interface
         pipe_xgb = Pipeline(steps=[("pre", pre), ("model", xgb)])
 
@@ -281,6 +309,7 @@ def train_and_eval():
         fpr, tpr = _roc_points(y_te, prob_te)
         roc_dict["xgb"] = {"fpr": fpr, "tpr": tpr}
         results["xgb"] = {"val": met_val_xgb, "test": met_test_xgb, "thr": thr_xgb}
+        joblib.dump(pipe_xgb, os.path.join(MODELS_DIR, "xgb_pipeline.pkl"))
     else:
         print(f"⚠️ XGBoost not available, skipping. Error: {_XGB_ERR}")
 
@@ -301,7 +330,6 @@ def train_and_eval():
     }[best_name]
 
     # Persist the winning pipeline + its metrics
-    import joblib
     joblib.dump(best_pipe, os.path.join(MODELS_DIR, "logreg_pipeline.pkl"))
 
     with open(os.path.join(MODELS_DIR, "logreg_metrics.json"), "w") as f:

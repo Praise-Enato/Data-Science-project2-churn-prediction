@@ -47,28 +47,42 @@ def main():
     pre = pipe.named_steps["pre"]
     model = pipe.named_steps["model"]
 
-    if not hasattr(model, "coef_"):
-        raise ValueError("Loaded best model is not linear; this interpret script expects LogisticRegression.")
+    # We handle linear models via coefficients; otherwise fall back to feature_importances.
+    use_coeffs = hasattr(model, "coef_")
+    use_importance = hasattr(model, "feature_importances_")
+
+    if not use_coeffs and not use_importance:
+        raise ValueError(
+            f"{model.__class__.__name__} lacks coefficients or feature_importances_. "
+            "Cannot generate interpretability artifacts."
+        )
 
     # Get expanded feature names after preprocessing
     feat_names = get_feature_names(pre)
 
     # Coefficients (shape: [1, n_features])
-    coefs = model.coef_.ravel()
-    if len(coefs) != len(feat_names):
-        raise ValueError(f"Mismatch: {len(coefs)} coefs vs {len(feat_names)} feature names")
+    if use_coeffs:
+        values = model.coef_.ravel()
+    else:
+        values = model.feature_importances_.ravel()
+    if len(values) != len(feat_names):
+        raise ValueError(f"Mismatch: {len(values)} weights vs {len(feat_names)} feature names")
 
     # Build a tidy table
     df_imp = pd.DataFrame({
         "feature": feat_names,
-        "coef": coefs,
+        "value": values,
     })
-    df_imp["odds_ratio"] = np.exp(df_imp["coef"])
-    df_imp["abs_coef"] = df_imp["coef"].abs()
+    if use_coeffs:
+        df_imp["odds_ratio"] = np.exp(df_imp["value"])
+    else:
+        df_imp["odds_ratio"] = np.nan  # not meaningful for tree models
+    df_imp["abs_value"] = df_imp["value"].abs()
 
     # Sort for top drivers
-    top_positive = df_imp.sort_values("coef", ascending=False).head(20)  # pushes churn up
-    top_negative = df_imp.sort_values("coef", ascending=True).head(20)   # pushes churn down
+    sort_col = "value"
+    top_positive = df_imp.sort_values(sort_col, ascending=False).head(20)
+    top_negative = df_imp.sort_values(sort_col, ascending=True).head(20)
 
     # Save CSVs
     out_csv_all = os.path.join(MODELS_DIR, "logreg_feature_importance_full.csv")
@@ -85,23 +99,23 @@ def main():
     # --- PLOTS (horizontal bar charts) ---
     def plot_barh(df, title, savepath):
         plt.figure(figsize=(8, 6))
-        # Show odds_ratio for interpretability, but sort by abs_coef for visual emphasis
         df_plot = df.copy()
-        df_plot = df_plot.sort_values("coef", ascending=True)  # so bars stack from low to high
-        labels = df_plot["feature"].str.replace("cat__ohe__", "", regex=False)  # cosmetic
-        plt.barh(labels, df_plot["odds_ratio"])
-        plt.xlabel("Odds Ratio (exp(coef))")
+        df_plot = df_plot.sort_values(sort_col, ascending=True)
+        labels = df_plot["feature"].str.replace("cat__ohe__", "", regex=False)
+        plt.barh(labels, df_plot[sort_col])
+        plt.xlabel("Coefficient" if use_coeffs else "Feature Importance")
         plt.title(title)
-        for y, (feat, orv) in enumerate(zip(labels, df_plot["odds_ratio"])):
-            plt.text(1.01, y, f"{orv:.2f}", va="center")  # annotate at right side
+        if use_coeffs:
+            for y, (_, row) in enumerate(df_plot.iterrows()):
+                plt.text(row[sort_col] + 0.01, y, f"{row['odds_ratio']:.2f}", va="center")
         plt.tight_layout()
         plt.savefig(savepath, dpi=200)
         plt.close()
 
-    plot_barh(top_positive, "Top Positive Drivers of Churn (higher → more likely to churn)", 
-              os.path.join(FIG_DIR, "logreg_top_positive_odds.png"))
-    plot_barh(top_negative, "Top Negative Drivers of Churn (higher → less likely to churn)", 
-              os.path.join(FIG_DIR, "logreg_top_negative_odds.png"))
+    pos_title = "Top Positive Drivers of Churn (higher → more likely to churn)" if use_coeffs else "Top Features Increasing Predicted Risk"
+    neg_title = "Top Negative Drivers of Churn (higher → less likely to churn)" if use_coeffs else "Top Features Decreasing Predicted Risk"
+    plot_barh(top_positive, pos_title, os.path.join(FIG_DIR, "logreg_top_positive_odds.png"))
+    plot_barh(top_negative, neg_title, os.path.join(FIG_DIR, "logreg_top_negative_odds.png"))
 
     print("Saved figures:")
     print(" - figures/logreg_top_positive_odds.png")

@@ -11,6 +11,12 @@ import os
 import re
 import json
 import joblib
+try:
+    import altair as alt
+    _HAS_ALTAIR = True
+except Exception:
+    alt = None
+    _HAS_ALTAIR = False
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -105,8 +111,11 @@ FIG_DIR = "figures"
 BEST_MODEL_PATH = os.path.join(MODELS_DIR, "logreg_pipeline.pkl")
 METRICS_PATH   = os.path.join(MODELS_DIR, "logreg_metrics.json")
 CLV_QUARTILE_PLOT = os.path.join(FIG_DIR, "churn_rate_by_clv_quartile.png")
+LOGREG_BASELINE_PATH = os.path.join(MODELS_DIR, "logreg_baseline_pipeline.pkl")
+RF_PIPELINE_PATH = os.path.join(MODELS_DIR, "rf_pipeline.pkl")
+XGB_PIPELINE_PATH = os.path.join(MODELS_DIR, "xgb_pipeline.pkl")
 
-OPERATING_THRESHOLD = 0.59
+DEFAULT_OPERATING_THRESHOLD = 0.60  # fallback if metrics are unavailable
 EXPECTED_TENURE_MAP = {"Month-to-month": 6, "One year": 12, "Two year": 24}
 
 COLUMN_TITLE_MAP = {
@@ -144,6 +153,31 @@ def load_metrics():
     with open(METRICS_PATH, "r") as f:
         return json.load(f)
 
+
+@st.cache_resource
+def load_pipeline_at(path: str):
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Pipeline not found at {path}.")
+    return joblib.load(path)
+
+
+def get_operating_threshold() -> float:
+    """
+    Keep the app's decision threshold aligned with the persisted metrics.
+    Falls back to DEFAULT_OPERATING_THRESHOLD if metrics are missing.
+    """
+    try:
+        metrics = load_metrics()
+        thr = metrics.get("test", {}).get("used_threshold")
+        if thr is None:
+            thr = metrics.get("val", {}).get("chosen_threshold")
+        if thr is not None:
+            return float(thr)
+    except Exception:
+        pass
+    return DEFAULT_OPERATING_THRESHOLD
+
+
 @st.cache_data
 def load_processed_splits():
     train_p = os.path.join(PROCESSED_DIR, "train.csv")
@@ -156,6 +190,13 @@ def load_processed_splits():
         )
     return (pd.read_csv(train_p), pd.read_csv(val_p), pd.read_csv(test_p))
 
+@st.cache_data
+def get_feature_thresholds() -> tuple[float, float]:
+    train_df, _, _ = load_processed_splits()
+    ratio = (train_df["MonthlyCharges"] / train_df["CLV"].replace(0, 1)).median()
+    median_monthly = train_df["MonthlyCharges"].median()
+    return float(ratio), float(median_monthly)
+
 # --------------------------- Utilities ---------------------------
 def compute_clv(monthly_charges: float, contract: str) -> float:
     return float(monthly_charges) * EXPECTED_TENURE_MAP.get(contract, 6)
@@ -165,11 +206,12 @@ def risk_bucket(prob: float):
 
 def predict_single(pipe, payload: dict) -> dict:
     X = pd.DataFrame([payload])
+    threshold = get_operating_threshold()
     if hasattr(pipe.named_steps["model"], "predict_proba"):
         prob = float(pipe.predict_proba(X)[:, 1][0])
     else:
         prob = float(pipe.predict(X)[0])
-    return {"prob": prob, "pred": int(prob >= OPERATING_THRESHOLD), "threshold": OPERATING_THRESHOLD}
+    return {"prob": prob, "pred": int(prob >= threshold), "threshold": threshold}
 
 def _get_feature_names(preprocessor) -> list:
     try:
@@ -278,12 +320,29 @@ def global_importance_logreg(pipe, top_n=25) -> pd.DataFrame:
     model = pipe.named_steps["model"]
     if not hasattr(model, "coef_"):
         return pd.DataFrame(columns=["Feature","Importance"])
+    try:
+        train_df, _, _ = load_processed_splits()
+        X_tr = train_df.drop(columns=["ChurnFlag"])
+        X_tr_pre = pre.transform(X_tr)
+        X_tr_pre = X_tr_pre.toarray() if hasattr(X_tr_pre, "toarray") else np.asarray(X_tr_pre)
+        std = X_tr_pre.std(axis=0)
+    except Exception:
+        std = None
     names = _get_feature_names(pre)
-    coefs = np.abs(model.coef_.ravel())
+    coefs = model.coef_.ravel()
     n = min(len(names), len(coefs))
-    df = pd.DataFrame({"FeatureRaw": names[:n], "Importance": coefs[:n]})
+    if std is not None and len(std) >= n:
+        importance_vals = np.abs(coefs[:n] * std[:n])
+    else:
+        importance_vals = np.abs(coefs[:n])
+    df = pd.DataFrame({
+        "FeatureRaw": names[:n],
+        "Importance": importance_vals,
+        "Signed": coefs[:n]
+    })
     df["Feature"] = df["FeatureRaw"].apply(pretty_feature_name)
-    return df.sort_values("Importance", ascending=False).head(top_n)[["Feature","Importance"]]
+    df["Direction"] = np.where(df["Signed"] >= 0, "Increases churn", "Decreases churn")
+    return df.sort_values("Importance", ascending=False).head(top_n)[["Feature","Importance","Direction","Signed"]]
 
 def global_importance_tree_feature_importances(pipe, top_n=25) -> pd.DataFrame:
     pre   = pipe.named_steps["pre"]
@@ -293,13 +352,17 @@ def global_importance_tree_feature_importances(pipe, top_n=25) -> pd.DataFrame:
     names = _get_feature_names(pre)
     imps  = model.feature_importances_
     n = min(len(names), len(imps))
-    df = pd.DataFrame({"FeatureRaw": names[:n], "Importance": imps[:n]})
+    df = pd.DataFrame({
+        "FeatureRaw": names[:n],
+        "Importance": imps[:n],
+    })
     df["Feature"] = df["FeatureRaw"].apply(pretty_feature_name)
-    return df.sort_values("Importance", ascending=False).head(top_n)[["Feature","Importance"]]
+    df["Direction"] = "Contributes to churn"
+    return df.sort_values("Importance", ascending=False).head(top_n)[["Feature","Importance","Direction"]]
 
-def tree_shap_summary_fig(pipe, sample_df: pd.DataFrame, max_display=25):
+def tree_shap_importance(pipe, sample_df: pd.DataFrame, top_n=25) -> pd.DataFrame:
     if not _HAS_SHAP:
-        return None
+        return pd.DataFrame()
     pre   = pipe.named_steps["pre"]
     model = pipe.named_steps["model"]
     X_pre = pre.transform(sample_df)
@@ -309,18 +372,42 @@ def tree_shap_summary_fig(pipe, sample_df: pd.DataFrame, max_display=25):
         explainer = shap.TreeExplainer(model)
         shap_vals = explainer.shap_values(X_d)
     except Exception:
-        return None
+        return pd.DataFrame()
     if isinstance(shap_vals, list) and len(shap_vals) == 2:
         shap_vals_use = shap_vals[1]
     else:
         shap_vals_use = shap_vals
-    fig = plt.figure(figsize=(8, 5))
-    shap.summary_plot(
-        shap_vals_use, X_d, feature_names=feat_names, plot_type="dot",
-        show=False, max_display=max_display
-    )
-    plt.tight_layout()
-    return fig
+    importance = np.mean(np.abs(shap_vals_use), axis=0)
+    if hasattr(importance, "A1"):  # sparse matrix -> flatten
+        importance = importance.A1
+    else:
+        importance = np.asarray(importance).ravel()
+    n = min(len(feat_names), len(importance))
+    feature_list = list(feat_names[:n])
+    df = pd.DataFrame({
+        "FeatureRaw": feature_list,
+        "Importance": importance[:n],
+        "Direction": "Contributes to churn"
+    })
+    df["Feature"] = df["FeatureRaw"].apply(pretty_feature_name)
+    return df.sort_values("Importance", ascending=False).head(top_n)[["Feature","Importance","Direction"]]
+
+def render_importance_chart(df: pd.DataFrame, title: str):
+    if df.empty:
+        st.info("No importance data available.")
+        return
+    display_cols = [c for c in df.columns if c != "FeatureRaw"]
+    if not _HAS_ALTAIR:
+        st.write(title)
+        st.dataframe(df[display_cols], use_container_width=True, hide_index=True)
+        return
+    chart = alt.Chart(df).mark_bar().encode(
+        x=alt.X("Importance:Q", title="Importance"),
+        y=alt.Y("Feature:N", sort="-x", title="Feature"),
+        color=alt.Color("Direction:N", legend=alt.Legend(title="Effect"), scale=alt.Scale(scheme="tealblues")) if "Direction" in df.columns else alt.value("#7C4DFF"),
+        tooltip=display_cols
+    ).properties(title=title, width="container", height=320)
+    st.altair_chart(chart, use_container_width=True)
 
 # ---------- Retention logic ----------
 @st.cache_data
@@ -415,7 +502,7 @@ with tabs[0]:
                       "tenure":2,"monthly":105,"contract":"Month-to-month","internet_service":"Fiber optic",
                       "payment_method":"Electronic check","senior":True,"paperless":True,"gender":"Female",
                       "phone":False,"multiline":"No phone service","onsec":False,"onbak":False,"devprot":False,
-                      "techsup":False,"stv":False,"smov":False
+                      "techsup":False,"stv":False,"smov":False,"partner":False,"dependents":False
                   }))
     with colp2:
         st.button("🛡️ Low-risk preset", key="lo",
@@ -423,7 +510,7 @@ with tabs[0]:
                       "tenure":24,"monthly":60,"contract":"Two year","internet_service":"DSL",
                       "payment_method":"Bank transfer (automatic)","senior":False,"paperless":False,"gender":"Male",
                       "phone":True,"multiline":"Yes","onsec":True,"onbak":True,"devprot":True,
-                      "techsup":True,"stv":True,"smov":True
+                      "techsup":True,"stv":True,"smov":True,"partner":True,"dependents":False
                   }))
 
     with st.form("predict_form", clear_on_submit=False):
@@ -446,6 +533,8 @@ with tabs[0]:
             paperless = st.toggle("Paperless Billing", value=st.session_state.get("paperless", False))
             gender    = st.selectbox("Gender", ["Female","Male"],
                         index=["Female","Male"].index(st.session_state.get("gender","Female")))
+            partner   = st.toggle("Partner", value=st.session_state.get("partner", False))
+            dependents = st.toggle("Dependents", value=st.session_state.get("dependents", False))
 
         st.markdown("###### Services")
         s1, s2, s3, s4 = st.columns(4)
@@ -476,6 +565,35 @@ with tabs[0]:
         internet_no_tech_support = 1 if (internet_service != "No" and not techsup) else 0
         tenure_bucket = "0-6m" if tenure <= 6 else "6-12m" if tenure <= 12 else "12-24m" if tenure <= 24 else "24m+"
         clv_est = compute_clv(monthly, contract)
+        tenure_ord_map = {"0-6m": 0, "6-12m": 1, "12-24m": 2, "24m+": 3}
+        tenure_bucket_ord = tenure_ord_map.get(tenure_bucket, 0)
+        autopay_methods = {"Bank transfer (automatic)", "Credit card (automatic)"}
+        is_auto_pay = int(payment_method in autopay_methods)
+        is_long_contract = int("year" in contract.lower())
+        streaming_services = int(stv) + int(smov)
+        support_services = int(onsec) + int(onbak) + int(devprot) + int(techsup)
+        senior_fiber_optic = int(senior and internet_service.lower() == "fiber optic")
+        tenure_years = tenure / 12.0
+        per_service_charge = monthly / max(services_count, 1)
+        is_fiber_optic = int(internet_service.lower() == "fiber optic")
+        has_streaming_any = int(streaming_services > 0)
+        has_support_any = int(support_services > 0)
+        has_multiple_lines_yes = int(multiline.strip().lower() == "yes")
+        is_electronic_check = int(payment_method.strip().lower() == "electronic check")
+        paperless_autopay = int(paperless and is_auto_pay == 1)
+        family_bundle = int(partner or dependents)
+        early_tenure_flag = int(tenure <= 6)
+        remaining_value = max(clv_est - total_charges, 0.0)
+        expected_tenure = EXPECTED_TENURE_MAP.get(contract, 6)
+        tenure_remaining = max(expected_tenure - tenure, 0)
+        tenure_fraction_complete = min(tenure / max(expected_tenure, 1), 5.0)
+        remaining_value_ratio = remaining_value / max(clv_est, 1.0)
+        charges_per_month_tenure = total_charges / max(tenure, 1)
+
+        # Load training medians for thresholds
+        ratio_median, monthly_median = get_feature_thresholds()
+        high_charge_to_clv_ratio = int((monthly / max(clv_est, 1.0)) >= ratio_median)
+        high_monthly_charge = int(monthly >= monthly_median)
 
         payload = {
             "tenure": int(tenure),
@@ -485,8 +603,33 @@ with tabs[0]:
             "services_count": int(services_count),
             "monthly_to_total_ratio": float(monthly_to_total_ratio),
             "internet_no_tech_support": int(internet_no_tech_support),
-            "gender": gender, "SeniorCitizen": int(senior),
-            "Partner":"No","Dependents":"No",
+            "tenure_bucket_ord": int(tenure_bucket_ord),
+            "is_auto_pay": int(is_auto_pay),
+            "is_long_contract": int(is_long_contract),
+            "streaming_services": int(streaming_services),
+            "support_services": int(support_services),
+            "senior_fiber_optic": int(senior_fiber_optic),
+            "charges_per_month_of_tenure": float(charges_per_month_tenure),
+            "high_charge_to_clv_ratio": int(high_charge_to_clv_ratio),
+            "tenure_years": float(tenure_years),
+            "per_service_charge": float(per_service_charge),
+            "is_fiber_optic": int(is_fiber_optic),
+            "has_streaming_any": int(has_streaming_any),
+            "has_support_any": int(has_support_any),
+            "has_multiple_lines_yes": int(has_multiple_lines_yes),
+            "is_electronic_check": int(is_electronic_check),
+            "paperless_autopay": int(paperless_autopay),
+            "family_bundle": int(family_bundle),
+            "early_tenure_flag": int(early_tenure_flag),
+            "high_monthly_charge": int(high_monthly_charge),
+            "tenure_remaining": int(tenure_remaining),
+            "tenure_fraction_complete": float(tenure_fraction_complete),
+            "remaining_value": float(remaining_value),
+            "remaining_value_ratio": float(remaining_value_ratio),
+            "gender": gender,
+            "SeniorCitizen": int(senior),
+            "Partner": "Yes" if partner else "No",
+            "Dependents": "Yes" if dependents else "No",
             "PhoneService": "Yes" if phone else "No",
             "MultipleLines": multiline, "InternetService": internet_service,
             "OnlineSecurity": "Yes" if onsec else "No",
@@ -504,6 +647,11 @@ with tabs[0]:
         try:
             pipe = load_best_pipeline()
             res  = predict_single(pipe, payload)
+            explain_pipe = None
+            try:
+                explain_pipe = load_pipeline_at(LOGREG_BASELINE_PATH)
+            except Exception:
+                explain_pipe = pipe if hasattr(pipe.named_steps["model"], "coef_") else None
             prob, pred = res["prob"], res["pred"]
             risk = risk_bucket(prob)
             badge = "badge high" if risk=="High" else "badge med" if risk=="Medium" else "badge"
@@ -514,7 +662,7 @@ with tabs[0]:
                 st.metric("Churn probability", f"{prob*100:.1f}%")
                 st.progress(min(max(prob,0.0),1.0))
             with m2:
-                st.markdown(f"**Decision (@thr={OPERATING_THRESHOLD:.2f}):** {'Churn (1)' if pred else 'No Churn (0)'}")
+                st.markdown(f"**Decision (@thr={res['threshold']:.2f}):** {'Churn (1)' if pred else 'No Churn (0)'}")
                 st.markdown(f'<span class="{badge}">Risk: {risk}</span>', unsafe_allow_html=True)
                 st.write(f"**Estimated CLV:** ${clv_est:,.2f}  \n(= Monthly Charges × Expected Tenure)")
             st.markdown('</div>', unsafe_allow_html=True)
@@ -561,7 +709,7 @@ with tabs[0]:
             st.markdown('</div>', unsafe_allow_html=True)
 
             # Why this prediction?
-            expl = explain_logreg_prediction(pipe, payload, top_k=5)
+            expl = explain_logreg_prediction(explain_pipe, payload, top_k=5) if explain_pipe is not None else None
             if expl is not None:
                 st.markdown('<div class="card section">', unsafe_allow_html=True)
                 st.markdown("#### Why this prediction?")
@@ -584,6 +732,8 @@ with tabs[0]:
                 st.caption("Interpretation: each row shows the contribution to the log-odds. "
                            "`Odds×` is the multiplicative impact on odds for this input (e.g., 1.30 = +30%).")
                 st.markdown('</div>', unsafe_allow_html=True)
+            else:
+                st.info("Logistic-regression interpretability unavailable. Regenerate models to refresh coefficients.")
 
         except Exception as e:
             st.error(str(e))
@@ -605,6 +755,39 @@ with tabs[1]:
     except Exception as e:
         st.error(str(e))
     st.markdown('</div>', unsafe_allow_html=True)
+
+    mm_path = os.path.join(MODELS_DIR, "metrics_all.json")
+    if os.path.exists(mm_path):
+        with open(mm_path) as f:
+            all_metrics = json.load(f, object_pairs_hook=dict)
+        if all_metrics:
+            st.markdown('<div class="card section">', unsafe_allow_html=True)
+            st.write("**Confusion matrices (Test)**")
+            cols = st.columns(len(all_metrics))
+            label_map = {"logreg": "Logistic Regression", "rf": "Random Forest", "xgb": "XGBoost"}
+            for col, (model_key, stats) in zip(cols, all_metrics.items()):
+                with col:
+                    test_stats = stats.get("test", {})
+                    cm = np.array([
+                        [int(test_stats.get("tn", 0)), int(test_stats.get("fp", 0))],
+                        [int(test_stats.get("fn", 0)), int(test_stats.get("tp", 0))],
+                    ], dtype=int)
+                    fig, ax = plt.subplots(figsize=(3.6, 3.6))
+                    im = ax.imshow(cm, cmap="Blues")
+                    for (i, j), value in np.ndenumerate(cm):
+                        text_color = "white" if value > cm.max() / 2 else "#0b1220"
+                        ax.text(j, i, f"{value}", va="center", ha="center", color=text_color, fontsize=11, fontweight="bold")
+                    ax.set_xticks([0, 1]); ax.set_yticks([0, 1])
+                    ax.set_xticklabels(["No churn", "Churn"])
+                    ax.set_yticklabels(["No churn", "Churn"])
+                    ax.set_xlabel("Predicted label")
+                    ax.set_ylabel("True label")
+                    ax.set_title(label_map.get(model_key, model_key.upper()), fontsize=12, pad=8)
+                    fig.tight_layout()
+                    st.pyplot(fig, use_container_width=True)
+                    plt.close(fig)
+            st.caption("Each matrix uses the model's saved validation threshold evaluated on the held-out test set.")
+            st.markdown('</div>', unsafe_allow_html=True)
 
     # Comparison table
     mm_path = os.path.join(MODELS_DIR, "metrics_all.json")
@@ -681,48 +864,66 @@ with tabs[1]:
     st.markdown('<div class="card section">', unsafe_allow_html=True)
     st.subheader("Global Importance")
 
-    pipe = None
-    try:
-        pipe = load_best_pipeline()
-    except Exception as e:
-        st.info("Model pipeline not available for importance plots. " + str(e))
-
-    if pipe is not None:
-        model_name = pipe.named_steps["model"].__class__.__name__.upper()
-        is_tree_model = any(k in model_name for k in ["FOREST", "XGB", "BOOST", "TREE"])
+    pipeline_options = [
+        ("Logistic Regression", LOGREG_BASELINE_PATH, "linear"),
+        ("Random Forest", RF_PIPELINE_PATH, "tree"),
+        ("XGBoost", XGB_PIPELINE_PATH, "tree"),
+    ]
+    available_pipes = [(label, path, kind) for label, path, kind in pipeline_options if os.path.exists(path)]
+    if not available_pipes:
+        st.info("No saved model pipelines found. Run training to generate them.")
+    else:
+        metrics_model = None
+        try:
+            metrics_model = load_metrics().get("model_name")
+        except Exception:
+            metrics_model = None
+        default_label = None
+        if metrics_model:
+            label_map = {"logreg": "Logistic Regression", "rf": "Random Forest", "xgb": "XGBoost"}
+            default_label = label_map.get(metrics_model)
+        labels = [lbl for lbl, _, _ in available_pipes]
+        default_index = labels.index(default_label) if default_label in labels else 0
+        selected_label = st.selectbox("Select model for global importance", labels, index=default_index)
+        selected_path, selected_kind = next((p, k) for lbl, p, k in available_pipes if lbl == selected_label)
 
         try:
-            _, _, test_df = load_processed_splits()
-            X_test = test_df.drop(columns=["ChurnFlag"])
-            sample_n = min(1000, len(X_test))
-            X_sample = X_test.sample(sample_n, random_state=42) if len(X_test) > sample_n else X_test
+            pipe = load_pipeline_at(selected_path)
         except Exception as e:
-            X_sample = None
-            st.caption("Note: could not load test set sample for SHAP — " + str(e))
+            st.error(f"Could not load pipeline: {e}")
+            pipe = None
 
-        if is_tree_model and _HAS_SHAP and X_sample is not None:
-            fig = tree_shap_summary_fig(pipe, X_sample, max_display=25)
-            if fig is not None:
-                st.pyplot(fig, use_container_width=True)
-                st.caption("SHAP summary: global explanation of feature impact (positive class).")
+        if pipe is not None:
+            sample_df = None
+            try:
+                _, _, test_df = load_processed_splits()
+                X_test = test_df.drop(columns=["ChurnFlag"])
+                sample_n = min(1000, len(X_test))
+                sample_df = X_test.sample(sample_n, random_state=42) if len(X_test) > sample_n else X_test
+            except Exception as e:
+                st.caption("Note: could not load test set sample for SHAP — " + str(e))
+
+            if selected_kind == "tree":
+                df_imp = pd.DataFrame()
+                if _HAS_SHAP and sample_df is not None:
+                    df_imp = tree_shap_importance(pipe, sample_df, top_n=25)
+                    if not df_imp.empty:
+                        render_importance_chart(df_imp, f"{selected_label} SHAP feature importance")
+                        st.caption("Mean |SHAP| values on a sampled test subset.")
+                if df_imp.empty:
+                    df_imp = global_importance_tree_feature_importances(pipe, top_n=25)
+                    if df_imp.empty:
+                        st.info("Feature importances unavailable for this model.")
+                    else:
+                        render_importance_chart(df_imp, f"{selected_label} feature importance")
+                        st.caption("Tree-based importance derived from feature_importances_.")
             else:
-                st.info("SHAP could not be computed; showing fallback feature importances instead.")
-                df_imp = global_importance_tree_feature_importances(pipe, top_n=25)
-                st.dataframe(df_imp, use_container_width=True, hide_index=True)
-        else:
-            if "LOGISTIC" in model_name or "LOGISTICREGRESSION" in model_name or "LOGREG" in model_name:
                 df_imp = global_importance_logreg(pipe, top_n=25)
-                st.dataframe(df_imp, use_container_width=True, hide_index=True)
-                st.caption("Logistic Regression: absolute coefficient magnitude as global importance.")
-            else:
-                df_imp = global_importance_tree_feature_importances(pipe, top_n=25)
-                if not df_imp.empty:
-                    st.dataframe(df_imp, use_container_width=True, hide_index=True)
-                    st.caption("Fallback: model.feature_importances_.")
+                if df_imp.empty:
+                    st.info("Coefficient-based importance unavailable for this model.")
                 else:
-                    st.info("No global importance method available for this model.")
-    else:
-        st.info("Load a model to view global importance.")
+                    render_importance_chart(df_imp, "Logistic Regression feature importance")
+                    st.caption("Bars use |coefficient × std|; color indicates churn direction.")
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ===================== Tab 3: CLV Overview =====================
@@ -739,6 +940,19 @@ with tabs[2]:
     try:
         train, _, _ = load_processed_splits()
         if "CLV" in train.columns:
+            st.markdown('<div class="card section">', unsafe_allow_html=True)
+            st.write("**CLV Distribution (train)**")
+            fig, ax = plt.subplots(figsize=(6.2, 3.8))
+            ax.hist(train["CLV"], bins=30, color="#7C4DFF", alpha=0.85, edgecolor="#1f2233")
+            ax.set_xlabel("Customer Lifetime Value ($)")
+            ax.set_ylabel("Customers")
+            ax.set_title("CLV Distribution (Train Split)")
+            fig.tight_layout()
+            st.pyplot(fig, use_container_width=True)
+            plt.close(fig)
+            st.caption("Histogram highlights how customer value skews; CLV = Monthly Charges × Expected Tenure.")
+            st.markdown('</div>', unsafe_allow_html=True)
+
             stats = train["CLV"].describe()[["count","mean","std","min","25%","50%","75%","max"]]
             st.markdown('<div class="card section">', unsafe_allow_html=True)
             st.write("**CLV Summary (train)**")
