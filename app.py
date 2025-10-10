@@ -381,12 +381,22 @@ def render_clv_plot_inline():
         tmp = train.assign(CLV_quartile=quart)
         agg = (tmp.groupby("CLV_quartile")["ChurnFlag"]
                  .agg(size="count", churn_rate="mean").reset_index())
-        fig, ax = plt.subplots(figsize=(6,3.6))
-        ax.bar(agg["CLV_quartile"], agg["churn_rate"], color="#7C4DFF")
-        ax.set_ylim(0, max(.01, agg["churn_rate"].max())*1.15)
-        ax.set_ylabel("Churn rate"); ax.set_title("Churn rate by CLV quartile (train)")
-        st.pyplot(fig)
-        plt.close(fig)
+        if _HAS_ALTAIR:
+            max_rate = float(agg["churn_rate"].max()) if not agg.empty else 0.0
+            domain_max = max(0.01, max_rate * 1.15)
+            chart = alt.Chart(agg).mark_bar(color="#7C4DFF").encode(
+                x=alt.X("CLV_quartile:N", title="CLV quartile"),
+                y=alt.Y("churn_rate:Q", title="Churn rate", axis=alt.Axis(format=".0%"), scale=alt.Scale(domain=[0, domain_max])),
+                tooltip=["CLV_quartile", alt.Tooltip("churn_rate", title="Churn rate", format=".1%"), alt.Tooltip("size", title="Customers")]
+            ).properties(title="Churn rate by CLV quartile (train)", height=320)
+            st.altair_chart(chart, use_container_width=True)
+        else:
+            fig, ax = plt.subplots(figsize=(6,3.6))
+            ax.bar(agg["CLV_quartile"], agg["churn_rate"], color="#7C4DFF")
+            ax.set_ylim(0, max(.01, agg["churn_rate"].max())*1.15)
+            ax.set_ylabel("Churn rate"); ax.set_title("Churn rate by CLV quartile (train)")
+            st.pyplot(fig)
+            plt.close(fig)
     except Exception as e:
         st.warning(f"Could not build CLV plot: {e}")
 
@@ -441,6 +451,16 @@ def render_importance_chart(df: pd.DataFrame, title: str):
         st.info("No importance data available.")
         return
     display_cols = [c for c in df.columns if c != "FeatureRaw"]
+    safe_key = re.sub(r"[^A-Za-z0-9_]+", "_", title.lower())
+    view_mode = st.radio(
+        "View mode",
+        ("Chart", "Table"),
+        horizontal=True,
+        key=f"importance_view_{safe_key}",
+    )
+    if view_mode == "Table":
+        st.dataframe(df[display_cols], use_container_width=True, hide_index=True)
+        return
     if not _HAS_ALTAIR:
         st.write(title)
         st.dataframe(df[display_cols], use_container_width=True, hide_index=True)
@@ -1015,14 +1035,22 @@ with tabs[2]:
         if "CLV" in train.columns:
             st.markdown('<div class="card section">', unsafe_allow_html=True)
             st.write("**CLV Distribution (train)**")
-            fig, ax = plt.subplots(figsize=(6.2, 3.8))
-            ax.hist(train["CLV"], bins=30, color="#7C4DFF", alpha=0.85, edgecolor="#1f2233")
-            ax.set_xlabel("Customer Lifetime Value ($)")
-            ax.set_ylabel("Customers")
-            ax.set_title("CLV Distribution (Train Split)")
-            fig.tight_layout()
-            st.pyplot(fig, use_container_width=True)
-            plt.close(fig)
+            if _HAS_ALTAIR:
+                chart = alt.Chart(train).mark_bar(color="#7C4DFF", opacity=0.9).encode(
+                    x=alt.X("CLV:Q", bin=alt.Bin(maxbins=30), title="Customer Lifetime Value ($)"),
+                    y=alt.Y("count()", title="Customers"),
+                    tooltip=[alt.Tooltip("count()", title="Customers"), alt.Tooltip("CLV", title="CLV", format="$.0f")]
+                ).properties(height=320)
+                st.altair_chart(chart, use_container_width=True)
+            else:
+                fig, ax = plt.subplots(figsize=(6.2, 3.8))
+                ax.hist(train["CLV"], bins=30, color="#7C4DFF", alpha=0.85, edgecolor="#1f2233")
+                ax.set_xlabel("Customer Lifetime Value ($)")
+                ax.set_ylabel("Customers")
+                ax.set_title("CLV Distribution (Train Split)")
+                fig.tight_layout()
+                st.pyplot(fig, use_container_width=True)
+                plt.close(fig)
             st.caption("Histogram highlights how customer value skews; CLV = Monthly Charges × Expected Tenure.")
             st.markdown('</div>', unsafe_allow_html=True)
 

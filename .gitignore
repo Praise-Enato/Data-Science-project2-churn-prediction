@@ -4,5 +4,8 @@ __pycache__/
 *.png
 *.svg
 project2-churn-prediction.zip
-test_env
+test_env/
+
+# Keep generated figures under version control for deployment
+!figures/*.png
 praise_venv2/
