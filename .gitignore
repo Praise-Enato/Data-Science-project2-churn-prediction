@@ -9,3 +9,4 @@ test_env/
 # Keep generated figures under version control for deployment
 !figures/*.png
 praise_venv2/
+models/xgb_pipeline.pkl
