@@ -205,6 +205,34 @@ def load_importance_artifact(model_key: str) -> tuple[pd.DataFrame, str]:
     return df, source
 
 
+@st.cache_data
+def compute_business_insights() -> dict:
+    train, _, _ = load_processed_splits()
+    df = train.copy()
+    df["ChurnFlag"] = df["ChurnFlag"].astype(int)
+
+    contract_rates = df.groupby("Contract")["ChurnFlag"].mean()
+    autopay_mask = df["PaymentMethod"].str.contains("automatic", case=False, na=False)
+    autopay_rates = df.groupby(autopay_mask)["ChurnFlag"].mean()
+    tech_filters = df["InternetService"].str.lower() != "no"
+    tech_no = df.loc[tech_filters & (df["TechSupport"].str.lower() == "no"), "ChurnFlag"].mean()
+    tech_yes = df.loc[tech_filters & (df["TechSupport"].str.lower() == "yes"), "ChurnFlag"].mean()
+
+    clv_quartiles = pd.qcut(df["CLV"], 4, labels=["Low", "Medium", "High", "Premium"])
+    clv_rates = df.groupby(clv_quartiles, observed=False)["ChurnFlag"].mean()
+
+    return {
+        "contract_month_to_month": float(contract_rates.get("Month-to-month", float("nan"))),
+        "contract_two_year": float(contract_rates.get("Two year", float("nan"))),
+        "contract_one_year": float(contract_rates.get("One year", float("nan"))),
+        "autopay_auto": float(autopay_rates.get(True, float("nan"))),
+        "autopay_manual": float(autopay_rates.get(False, float("nan"))),
+        "tech_no_support": float(tech_no) if not pd.isna(tech_no) else float("nan"),
+        "tech_support": float(tech_yes) if not pd.isna(tech_yes) else float("nan"),
+        "clv_rates": {idx: float(val) for idx, val in clv_rates.items()},
+    }
+
+
 def _persist_importance_dataframe(model_key: str, source: str, df: pd.DataFrame):
     if df.empty:
         return
@@ -1006,11 +1034,22 @@ with tabs[2]:
     except Exception as e:
         st.info("Processed splits unavailable for preview. " + str(e))
 
+    insights = compute_business_insights()
+
+    def _pct(val: float | None) -> str:
+        if val is None or pd.isna(val):
+            return "–"
+        return f"{val * 100:.0f}%"
+
+    clv_rates = insights.get("clv_rates", {}) if isinstance(insights.get("clv_rates"), dict) else {}
+
     st.markdown('<div class="card section">', unsafe_allow_html=True)
     st.write("**Takeaways**")
-    st.markdown("""
-- Highest churn risk typically sits in **High** then **Medium** CLV segments.
-- **Premium** CLV segment shows much lower churn → maintain with loyalty and service quality.
-- Prioritize retention offers for **High → Medium**; trial incentives for **Low** selectively.
-""")
+    st.markdown(
+        f"""
+- Month-to-month contracts churn at **{_pct(insights.get('contract_month_to_month'))}**, while two-year terms are only **{_pct(insights.get('contract_two_year'))}**. Invest retention offers in short-term customers first.
+- Customers on manual billing (e.g., electronic check) churn at **{_pct(insights.get('autopay_manual'))}** compared with **{_pct(insights.get('autopay_auto'))}** on auto-pay. Building auto-pay adoption reduces attrition and payment friction.
+- High-value customers need protection: **High** CLV churn is **{_pct(clv_rates.get('High'))}** versus **{_pct(clv_rates.get('Premium'))}** in the Premium tier, and internet accounts without tech support churn at **{_pct(insights.get('tech_no_support'))}** vs **{_pct(insights.get('tech_support'))}**. Bundle support for High/Medium CLV clients.
+"""
+    )
     st.markdown('</div>', unsafe_allow_html=True)

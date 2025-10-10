@@ -52,6 +52,12 @@ Predict which telecom customers are likely to churn, estimate their Customer Lif
 - **CLV Overview tab:** CLV distribution, churn by quartile, and tailored retention takeaways.
 - Uses `@st.cache_data` and `@st.cache_resource` to keep load times under roughly two seconds on Streamlit Community Cloud.
 
+## Business Insights & Retention Actions
+
+- **Contract term still dominates churn.** Month-to-month subscribers churn at **43%**, versus **3%** for two-year contracts and **11%** for one-year terms. Prioritize converting short-term customers to annual agreements with targeted incentives.
+- **Billing automation halves churn.** Customers paying by electronic check churn at **46%** compared with **16%** for auto-pay methods. Embed auto-pay enrollments in retention plays, especially for at-risk fiber-optic users.
+- **Value and support gaps drive attrition.** “High” CLV customers churn at **38%** (vs **9%** in the Premium tier) and internet customers without tech support churn at **42%** (vs **15%** with support). Focus retention spend on High/Medium CLV accounts lacking support add-ons.
+
 ## Getting Started
 
 ### 1. Set up a virtual environment

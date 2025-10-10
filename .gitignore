@@ -5,3 +5,4 @@ __pycache__/
 *.svg
 project2-churn-prediction.zip
 test_env
+praise_venv2/

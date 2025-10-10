@@ -3,242 +3,242 @@
   "rows": [
     {
       "Feature": "num__tenure",
-      "Importance": 0.43256251242006044,
-      "Signed": -0.4325625124200594,
+      "Importance": 0.43256251237496285,
+      "Signed": -0.4325625123749618,
       "Direction": "Decreases churn"
     },
     {
       "Feature": "cat__Contract_Two year",
-      "Importance": 0.4289785660005178,
-      "Signed": -1.0007495063456597,
+      "Importance": 0.42897856595689804,
+      "Signed": -1.0007495062439007,
       "Direction": "Decreases churn"
     },
     {
       "Feature": "cat__Contract_Month-to-month",
-      "Importance": 0.41934761898898487,
-      "Signed": 0.8421626470051117,
+      "Importance": 0.4193476189558273,
+      "Signed": 0.8421626469385223,
       "Direction": "Increases churn"
     },
     {
       "Feature": "num__MonthlyCharges",
-      "Importance": 0.2994579029608134,
-      "Signed": -0.299457902960813,
+      "Importance": 0.2994579027827776,
+      "Signed": -0.2994579027827772,
       "Direction": "Decreases churn"
     },
     {
       "Feature": "cat__InternetService_Fiber optic",
-      "Importance": 0.2621599774949791,
-      "Signed": 0.5281363252846024,
+      "Importance": 0.2621599774664689,
+      "Signed": 0.528136325227167,
       "Direction": "Increases churn"
     },
     {
       "Feature": "cat__tenure_bucket_0-6m",
-      "Importance": 0.2381874133368891,
-      "Signed": 0.5853298234305239,
+      "Importance": 0.23818741334698293,
+      "Signed": 0.5853298234553288,
       "Direction": "Increases churn"
     },
     {
       "Feature": "cat__InternetService_DSL",
-      "Importance": 0.2376074312393391,
-      "Signed": -0.5016320257315067,
+      "Importance": 0.23760743121656416,
+      "Signed": -0.5016320256834247,
       "Direction": "Decreases churn"
     },
     {
       "Feature": "cat__tenure_bucket_24m+",
-      "Importance": 0.22194114003249069,
-      "Signed": -0.4454934182708001,
+      "Importance": 0.22194114003803148,
+      "Signed": -0.44549341828192185,
       "Direction": "Decreases churn"
     },
     {
       "Feature": "num__services_count",
-      "Importance": 0.19498072101253078,
-      "Signed": 0.19498072101253122,
+      "Importance": 0.1949807209620023,
+      "Signed": 0.19498072096200275,
       "Direction": "Increases churn"
     },
     {
       "Feature": "num__internet_no_tech_support",
-      "Importance": 0.17844976957833197,
-      "Signed": 0.1784497695783403,
+      "Importance": 0.17844976956544847,
+      "Signed": 0.1784497695654568,
       "Direction": "Increases churn"
     },
     {
       "Feature": "cat__PaymentMethod_Electronic check",
-      "Importance": 0.12027895304230962,
-      "Signed": 0.2550748245089792,
+      "Importance": 0.12027895304673265,
+      "Signed": 0.2550748245183591,
       "Direction": "Increases churn"
     },
     {
       "Feature": "cat__PaperlessBilling_No",
-      "Importance": 0.11989360381667971,
-      "Signed": -0.24331649999015986,
+      "Importance": 0.11989360382312698,
+      "Signed": -0.24331650000324417,
       "Direction": "Decreases churn"
     },
     {
       "Feature": "num__TotalCharges",
-      "Importance": 0.10968455275068793,
-      "Signed": 0.10968455275068796,
+      "Importance": 0.10968455271627958,
+      "Signed": 0.10968455271627961,
       "Direction": "Increases churn"
     },
     {
       "Feature": "cat__OnlineSecurity_No",
-      "Importance": 0.10785746360871522,
-      "Signed": 0.2157526466244962,
+      "Importance": 0.10785746360799671,
+      "Signed": 0.21575264662305893,
       "Direction": "Increases churn"
     },
     {
       "Feature": "num__CLV",
-      "Importance": 0.10710453560711104,
-      "Signed": 0.1071045356071109,
+      "Importance": 0.1071045355167135,
+      "Signed": 0.10710453551671337,
       "Direction": "Increases churn"
     },
     {
       "Feature": "cat__tenure_bucket_12-24m",
-      "Importance": 0.10311555404772237,
-      "Signed": -0.2923881275424092,
+      "Importance": 0.10311555404958091,
+      "Signed": -0.2923881275476792,
       "Direction": "Decreases churn"
     },
     {
       "Feature": "cat__MultipleLines_No",
-      "Importance": 0.08983319728104851,
-      "Signed": -0.17981720179529817,
+      "Importance": 0.08983319728795613,
+      "Signed": -0.17981720180912503,
       "Direction": "Decreases churn"
     },
     {
       "Feature": "cat__OnlineSecurity_Yes",
-      "Importance": 0.0858061963351382,
-      "Signed": -0.18924834707138988,
+      "Importance": 0.08580619633873773,
+      "Signed": -0.18924834707932878,
       "Direction": "Decreases churn"
     },
     {
       "Feature": "cat__StreamingMovies_Yes",
-      "Importance": 0.08243274796009932,
-      "Signed": 0.1689646690949693,
+      "Importance": 0.08243274795120953,
+      "Signed": 0.16896466907674765,
       "Direction": "Increases churn"
     },
     {
       "Feature": "cat__Dependents_Yes",
-      "Importance": 0.08160279927264363,
-      "Signed": -0.1783750668012812,
+      "Importance": 0.08160279927236451,
+      "Signed": -0.17837506680067108,
       "Direction": "Decreases churn"
     },
     {
       "Feature": "cat__StreamingMovies_No",
-      "Importance": 0.06946405908328307,
-      "Signed": -0.1424603695418998,
+      "Importance": 0.06946405907894598,
+      "Signed": -0.1424603695330051,
       "Direction": "Decreases churn"
     },
     {
       "Feature": "cat__PaperlessBilling_Yes",
-      "Importance": 0.06236777932353028,
-      "Signed": 0.12657147082143902,
+      "Importance": 0.06236777933219852,
+      "Signed": 0.12657147083903067,
       "Direction": "Increases churn"
     },
     {
       "Feature": "cat__PaymentMethod_Bank transfer (automatic)",
-      "Importance": 0.06108873376176666,
-      "Signed": -0.14727095442395488,
+      "Importance": 0.06108873375972091,
+      "Signed": -0.14727095441902305,
       "Direction": "Decreases churn"
     },
     {
       "Feature": "cat__InternetService_No",
-      "Importance": 0.059351960079066304,
-      "Signed": -0.14324932872180865,
+      "Importance": 0.059351960073331295,
+      "Signed": -0.1432493287079669,
       "Direction": "Decreases churn"
     },
     {
       "Feature": "cat__OnlineSecurity_No internet service",
-      "Importance": 0.059351960079066304,
-      "Signed": -0.14324932872180865,
+      "Importance": 0.059351960073331295,
+      "Signed": -0.1432493287079669,
       "Direction": "Decreases churn"
     },
     {
       "Feature": "cat__OnlineBackup_No internet service",
-      "Importance": 0.059351960079066304,
-      "Signed": -0.14324932872180865,
+      "Importance": 0.059351960073331295,
+      "Signed": -0.1432493287079669,
       "Direction": "Decreases churn"
     },
     {
       "Feature": "cat__DeviceProtection_No internet service",
-      "Importance": 0.059351960079066304,
-      "Signed": -0.14324932872180865,
+      "Importance": 0.059351960073331295,
+      "Signed": -0.1432493287079669,
       "Direction": "Decreases churn"
     },
     {
       "Feature": "cat__TechSupport_No internet service",
-      "Importance": 0.059351960079066304,
-      "Signed": -0.14324932872180865,
+      "Importance": 0.059351960073331295,
+      "Signed": -0.1432493287079669,
       "Direction": "Decreases churn"
     },
     {
       "Feature": "cat__StreamingTV_No internet service",
-      "Importance": 0.059351960079066304,
-      "Signed": -0.14324932872180865,
+      "Importance": 0.059351960073331295,
+      "Signed": -0.1432493287079669,
       "Direction": "Decreases churn"
     },
     {
       "Feature": "cat__StreamingMovies_No internet service",
-      "Importance": 0.059351960079066304,
-      "Signed": -0.14324932872180865,
+      "Importance": 0.059351960073331295,
+      "Signed": -0.1432493287079669,
       "Direction": "Decreases churn"
     },
     {
       "Feature": "cat__OnlineBackup_No",
-      "Importance": 0.05647394891583482,
-      "Signed": 0.1140312272008753,
+      "Importance": 0.05647394891454688,
+      "Signed": 0.11403122719827471,
       "Direction": "Increases churn"
     },
     {
       "Feature": "cat__StreamingTV_Yes",
-      "Importance": 0.052984791734393036,
-      "Signed": 0.1083402015995436,
+      "Importance": 0.0529847917265185,
+      "Signed": 0.10834020158344222,
       "Direction": "Increases churn"
     },
     {
       "Feature": "cat__SeniorCitizen_0",
-      "Importance": 0.04988218673929317,
-      "Signed": -0.13557962665207357,
+      "Importance": 0.04988218673906328,
+      "Signed": -0.1355796266514487,
       "Direction": "Decreases churn"
     },
     {
       "Feature": "cat__PaymentMethod_Credit card (automatic)",
-      "Importance": 0.048380225315573615,
-      "Signed": -0.11745460697721635,
+      "Importance": 0.04838022531625271,
+      "Signed": -0.117454606978865,
       "Direction": "Decreases churn"
     },
     {
       "Feature": "cat__gender_Female",
-      "Importance": 0.04741991917352073,
-      "Signed": -0.09484149869382523,
+      "Importance": 0.047419919171117694,
+      "Signed": -0.09484149868901907,
       "Direction": "Decreases churn"
     },
     {
       "Feature": "cat__PaymentMethod_Mailed check",
-      "Importance": 0.04499128413612415,
-      "Signed": -0.10709429227653271,
+      "Importance": 0.0449912841395578,
+      "Signed": -0.10709429228470595,
       "Direction": "Decreases churn"
     },
     {
       "Feature": "cat__OnlineBackup_Yes",
-      "Importance": 0.041710035467032155,
-      "Signed": -0.08752692764780191,
+      "Importance": 0.04171003547024684,
+      "Signed": -0.08752692765454781,
       "Direction": "Decreases churn"
     },
     {
       "Feature": "cat__StreamingTV_No",
-      "Importance": 0.03979968818401536,
-      "Signed": -0.08183590204645733,
+      "Importance": 0.039799688180727245,
+      "Signed": -0.08183590203969632,
       "Direction": "Decreases churn"
     },
     {
       "Feature": "cat__PhoneService_Yes",
-      "Importance": 0.03674560546902365,
-      "Signed": -0.12359829394275934,
+      "Importance": 0.03674560547432767,
+      "Signed": -0.12359829396060006,
       "Direction": "Decreases churn"
     },
     {
       "Feature": "cat__Partner_No",
-      "Importance": 0.033440601745000055,
-      "Signed": -0.0669262563856207,
+      "Importance": 0.03344060175264092,
+      "Signed": -0.06692625640091274,
       "Direction": "Decreases churn"
     }
   ]

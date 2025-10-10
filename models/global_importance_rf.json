@@ -2,129 +2,164 @@
   "source": "feature_importances",
   "rows": [
     {
-      "Feature": "Contract: Month-to-month",
-      "Importance": 0.13156434482501056,
-      "Direction": "Contributes to churn"
+      "Feature": "cat__Contract_Month-to-month",
+      "Importance": 0.13156434482501056
     },
     {
-      "Feature": "Tenure",
-      "Importance": 0.09238542272493576,
-      "Direction": "Contributes to churn"
+      "Feature": "num__tenure",
+      "Importance": 0.09238542272493576
     },
     {
-      "Feature": "CLV",
-      "Importance": 0.07186001212830413,
-      "Direction": "Contributes to churn"
+      "Feature": "num__CLV",
+      "Importance": 0.07186001212830413
     },
     {
-      "Feature": "Online Security: No",
-      "Importance": 0.06323698522717956,
-      "Direction": "Contributes to churn"
+      "Feature": "cat__OnlineSecurity_No",
+      "Importance": 0.06323698522717956
     },
     {
-      "Feature": "Tech Support: No",
-      "Importance": 0.05947186140708433,
-      "Direction": "Contributes to churn"
+      "Feature": "cat__TechSupport_No",
+      "Importance": 0.05947186140708433
     },
     {
-      "Feature": "Internet w/o Tech Support",
-      "Importance": 0.05562609733649557,
-      "Direction": "Contributes to churn"
+      "Feature": "num__internet_no_tech_support",
+      "Importance": 0.05562609733649557
     },
     {
-      "Feature": "Contract: Two year",
-      "Importance": 0.05411884736004816,
-      "Direction": "Contributes to churn"
+      "Feature": "cat__Contract_Two year",
+      "Importance": 0.05411884736004816
     },
     {
-      "Feature": "Total Charges",
-      "Importance": 0.05235799932583022,
-      "Direction": "Contributes to churn"
+      "Feature": "num__TotalCharges",
+      "Importance": 0.05235799932583022
     },
     {
-      "Feature": "Internet Service: Fiber optic",
-      "Importance": 0.04890055895472784,
-      "Direction": "Contributes to churn"
+      "Feature": "cat__InternetService_Fiber optic",
+      "Importance": 0.04890055895472784
     },
     {
-      "Feature": "Monthly Charges",
-      "Importance": 0.04229226886403352,
-      "Direction": "Contributes to churn"
+      "Feature": "num__MonthlyCharges",
+      "Importance": 0.04229226886403352
     },
     {
-      "Feature": "Tenure: bucket_24m+",
-      "Importance": 0.0395973520212181,
-      "Direction": "Contributes to churn"
+      "Feature": "cat__tenure_bucket_24m+",
+      "Importance": 0.0395973520212181
     },
     {
-      "Feature": "Payment Method: Electronic check",
-      "Importance": 0.02900450180983014,
-      "Direction": "Contributes to churn"
+      "Feature": "cat__PaymentMethod_Electronic check",
+      "Importance": 0.02900450180983014
     },
     {
-      "Feature": "Tenure: bucket_0-6m",
-      "Importance": 0.026036826127495385,
-      "Direction": "Contributes to churn"
+      "Feature": "cat__tenure_bucket_0-6m",
+      "Importance": 0.026036826127495385
     },
     {
-      "Feature": "Monthly/Total Ratio",
-      "Importance": 0.01907928934986539,
-      "Direction": "Contributes to churn"
+      "Feature": "num__monthly_to_total_ratio",
+      "Importance": 0.01907928934986539
     },
     {
-      "Feature": "Internet Service: DSL",
-      "Importance": 0.015264234685129259,
-      "Direction": "Contributes to churn"
+      "Feature": "cat__InternetService_DSL",
+      "Importance": 0.015264234685129259
     },
     {
-      "Feature": "Contract: One year",
-      "Importance": 0.014678672368018777,
-      "Direction": "Contributes to churn"
+      "Feature": "cat__Contract_One year",
+      "Importance": 0.014678672368018777
     },
     {
-      "Feature": "Online Backup: No",
-      "Importance": 0.012218559398069812,
-      "Direction": "Contributes to churn"
+      "Feature": "cat__OnlineBackup_No",
+      "Importance": 0.012218559398069812
     },
     {
-      "Feature": "Services Count",
-      "Importance": 0.010619668239732417,
-      "Direction": "Contributes to churn"
+      "Feature": "num__services_count",
+      "Importance": 0.010619668239732417
     },
     {
-      "Feature": "Online Security: No internet service",
-      "Importance": 0.010313394716099343,
-      "Direction": "Contributes to churn"
+      "Feature": "cat__OnlineSecurity_No internet service",
+      "Importance": 0.010313394716099343
     },
     {
-      "Feature": "Internet Service: No",
-      "Importance": 0.010054053826397751,
-      "Direction": "Contributes to churn"
+      "Feature": "cat__InternetService_No",
+      "Importance": 0.010054053826397751
     },
     {
-      "Feature": "Online Security: Yes",
-      "Importance": 0.00991852629175106,
-      "Direction": "Contributes to churn"
+      "Feature": "cat__OnlineSecurity_Yes",
+      "Importance": 0.00991852629175106
     },
     {
-      "Feature": "Streaming Movies: No internet service",
-      "Importance": 0.008461044128432793,
-      "Direction": "Contributes to churn"
+      "Feature": "cat__StreamingMovies_No internet service",
+      "Importance": 0.008461044128432793
     },
     {
-      "Feature": "Tech Support: No internet service",
-      "Importance": 0.008167381842332034,
-      "Direction": "Contributes to churn"
+      "Feature": "cat__TechSupport_No internet service",
+      "Importance": 0.008167381842332034
     },
     {
-      "Feature": "Online Backup: No internet service",
-      "Importance": 0.007730752889316111,
-      "Direction": "Contributes to churn"
+      "Feature": "cat__OnlineBackup_No internet service",
+      "Importance": 0.007730752889316111
     },
     {
-      "Feature": "Paperless Billing: Yes",
-      "Importance": 0.007603737715652483,
-      "Direction": "Contributes to churn"
+      "Feature": "cat__PaperlessBilling_Yes",
+      "Importance": 0.007603737715652483
+    },
+    {
+      "Feature": "cat__PaperlessBilling_No",
+      "Importance": 0.007503878055361922
+    },
+    {
+      "Feature": "cat__StreamingTV_No internet service",
+      "Importance": 0.007483402921951489
+    },
+    {
+      "Feature": "cat__DeviceProtection_No internet service",
+      "Importance": 0.006580890911485089
+    },
+    {
+      "Feature": "cat__TechSupport_Yes",
+      "Importance": 0.00624079730311059
+    },
+    {
+      "Feature": "cat__DeviceProtection_No",
+      "Importance": 0.005089478388339272
+    },
+    {
+      "Feature": "cat__StreamingMovies_Yes",
+      "Importance": 0.004558594070298783
+    },
+    {
+      "Feature": "cat__gender_Female",
+      "Importance": 0.004279729924568051
+    },
+    {
+      "Feature": "cat__gender_Male",
+      "Importance": 0.0042508128568220374
+    },
+    {
+      "Feature": "cat__StreamingMovies_No",
+      "Importance": 0.004217113455403724
+    },
+    {
+      "Feature": "cat__OnlineBackup_Yes",
+      "Importance": 0.003929858015480017
+    },
+    {
+      "Feature": "cat__MultipleLines_Yes",
+      "Importance": 0.0035677707484294365
+    },
+    {
+      "Feature": "cat__MultipleLines_No",
+      "Importance": 0.0035001690057032634
+    },
+    {
+      "Feature": "cat__Dependents_No",
+      "Importance": 0.0034399493422748438
+    },
+    {
+      "Feature": "cat__Partner_No",
+      "Importance": 0.0030985258042454306
+    },
+    {
+      "Feature": "cat__StreamingTV_Yes",
+      "Importance": 0.0030261703213415323
     }
   ]
 }

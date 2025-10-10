@@ -1,12 +1,11 @@
-pandas
-numpy
-scikit-learn
-matplotlib
-streamlit
-joblib
-seaborn
-altair
+pandas==2.2.2
+numpy==1.26.4
+scikit-learn==1.4.2
+matplotlib==3.8.4
+streamlit==1.36.0
+joblib==1.4.2
+seaborn==0.13.2
+altair==5.2.0
+xgboost==2.0.3
 
-# Optional extras installed only when advanced interpretability or XGBoost is required.
-# shap
-# xgboost
+# Optional: include shap==0.44.1 locally if you want SHAP-based tree explanations.
