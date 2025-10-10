@@ -11,6 +11,7 @@ import inspect
 import os
 import json
 import warnings
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Dict, Tuple
 
@@ -46,6 +47,141 @@ os.makedirs(MODELS_DIR, exist_ok=True)
 VAL_RECALL_MIN = 0.60  # recall-first policy on validation
 THRESH_GRID = np.round(np.linspace(0.30, 0.80, 51), 3)  # 0.30 → 0.80 (step ~0.01)
 RANDOM_STATE = 42
+IMPORTANCE_FILE_TEMPLATE = "global_importance_{name}.json"
+MAX_IMPORTANCE_ROWS = 40
+
+
+def _get_feature_names(preprocessor) -> list[str]:
+    try:
+        return preprocessor.get_feature_names_out().tolist()
+    except Exception:
+        names: list[str] = []
+        for name, trans, cols in preprocessor.transformers_:
+            if name == "remainder" and trans == "drop":
+                continue
+            if hasattr(trans, "named_steps") and "ohe" in trans.named_steps:
+                ohe = trans.named_steps["ohe"]
+                names.extend(ohe.get_feature_names_out(cols).tolist())
+            else:
+                names.extend(cols if isinstance(cols, list) else list(cols))
+        return names
+
+
+def _linear_global_importance(pipe: Pipeline, X_frame: pd.DataFrame) -> dict | None:
+    model = pipe.named_steps["model"]
+    if not hasattr(model, "coef_"):
+        return None
+    pre = pipe.named_steps["pre"]
+    names = _get_feature_names(pre)
+    coefs = model.coef_.ravel()
+    std = None
+    try:
+        X_pre = pre.transform(X_frame)
+        X_arr = X_pre.toarray() if hasattr(X_pre, "toarray") else np.asarray(X_pre)
+        if X_arr.ndim == 2:
+            std = X_arr.std(axis=0)
+    except Exception as exc:
+        print(f"⚠️ Could not compute standardized coefficients: {exc}")
+    rows = []
+    n = min(len(names), len(coefs))
+    for idx in range(n):
+        signed = float(coefs[idx])
+        if std is not None and idx < len(std):
+            importance = abs(signed * float(std[idx]))
+        else:
+            importance = abs(signed)
+        rows.append(
+            {
+                "Feature": names[idx],
+                "Importance": float(importance),
+                "Signed": signed,
+                "Direction": "Increases churn" if signed >= 0 else "Decreases churn",
+            }
+        )
+    rows.sort(key=lambda r: r["Importance"], reverse=True)
+    return {"source": "coef_std", "rows": rows[:MAX_IMPORTANCE_ROWS]}
+
+
+def _tree_feature_importance(pipe: Pipeline) -> dict | None:
+    model = pipe.named_steps["model"]
+    if not hasattr(model, "feature_importances_"):
+        return None
+    pre = pipe.named_steps["pre"]
+    names = _get_feature_names(pre)
+    imps = model.feature_importances_
+    rows = []
+    n = min(len(names), len(imps))
+    for idx in range(n):
+        rows.append(
+            {
+                "Feature": names[idx],
+                "Importance": float(imps[idx]),
+            }
+        )
+    rows.sort(key=lambda r: r["Importance"], reverse=True)
+    return {"source": "feature_importances", "rows": rows[:MAX_IMPORTANCE_ROWS]}
+
+
+def _tree_shap_importance(pipe: Pipeline, X_frame: pd.DataFrame) -> dict | None:
+    try:
+        import shap  # type: ignore
+    except Exception as exc:
+        print(f"ℹ️ SHAP not available, skipping tree SHAP importance: {exc}")
+        return None
+
+    if X_frame.empty:
+        return None
+
+    pre = pipe.named_steps["pre"]
+    model = pipe.named_steps["model"]
+    sample_n = min(600, len(X_frame))
+    X_sample = (
+        X_frame.sample(sample_n, random_state=RANDOM_STATE)
+        if len(X_frame) > sample_n
+        else X_frame
+    )
+    try:
+        X_pre = pre.transform(X_sample)
+        X_arr = X_pre.toarray() if hasattr(X_pre, "toarray") else np.asarray(X_pre)
+        explainer = shap.TreeExplainer(model)
+        shap_vals = explainer.shap_values(X_arr)
+    except Exception as exc:
+        print(f"⚠️ Could not compute SHAP values for {model.__class__.__name__}: {exc}")
+        return None
+
+    if isinstance(shap_vals, list):
+        shap_array = shap_vals[1] if len(shap_vals) >= 2 else shap_vals[-1]
+    else:
+        shap_array = shap_vals
+    importance = np.mean(np.abs(shap_array), axis=0)
+    if hasattr(importance, "A1"):
+        importance = importance.A1
+
+    names = _get_feature_names(pre)
+    rows = []
+    n = min(len(names), len(importance))
+    for idx in range(n):
+        rows.append(
+            {
+                "Feature": names[idx],
+                "Importance": float(importance[idx]),
+            }
+        )
+    rows.sort(key=lambda r: r["Importance"], reverse=True)
+    return {
+        "source": "shap",
+        "rows": rows[:MAX_IMPORTANCE_ROWS],
+        "meta": {"sample_size": len(X_sample)},
+    }
+
+
+def _persist_importance(name: str, payload: dict | None):
+    if not payload or not payload.get("rows"):
+        return
+    path = Path(MODELS_DIR) / IMPORTANCE_FILE_TEMPLATE.format(name=name)
+    with open(path, "w") as f:
+        json.dump(payload, f, indent=2)
+    print(f"Saved {path}")
 
 
 # ------------------------- Data Loading -------------------------
@@ -312,6 +448,25 @@ def train_and_eval():
         joblib.dump(pipe_xgb, os.path.join(MODELS_DIR, "xgb_pipeline.pkl"))
     else:
         print(f"⚠️ XGBoost not available, skipping. Error: {_XGB_ERR}")
+
+    # ---------------- Persist interpretability assets ----------------
+    try:
+        _persist_importance("logreg", _linear_global_importance(pipe_logreg, X_tr))
+    except Exception as exc:
+        print(f"⚠️ Could not persist Logistic Regression importance: {exc}")
+
+    try:
+        rf_payload = _tree_shap_importance(pipe_rf, X_te) or _tree_feature_importance(pipe_rf)
+        _persist_importance("rf", rf_payload)
+    except Exception as exc:
+        print(f"⚠️ Could not persist Random Forest importance: {exc}")
+
+    if _HAS_XGB:
+        try:
+            xgb_payload = _tree_shap_importance(pipe_xgb, X_te) or _tree_feature_importance(pipe_xgb)
+            _persist_importance("xgb", xgb_payload)
+        except Exception as exc:
+            print(f"⚠️ Could not persist XGBoost importance: {exc}")
 
     # ---------------- Choose best model by validation F1 under recall constraint ----------------
     # (You can change selection logic if the brief asks for a different tie-breaker.)

@@ -1,0 +1,168 @@
+{
+  "source": "shap",
+  "rows": [
+    {
+      "Feature": "cat__Contract_Month-to-month",
+      "Importance": 0.5974338054656982
+    },
+    {
+      "Feature": "num__tenure",
+      "Importance": 0.5294101238250732
+    },
+    {
+      "Feature": "num__MonthlyCharges",
+      "Importance": 0.4329959750175476
+    },
+    {
+      "Feature": "num__monthly_to_total_ratio",
+      "Importance": 0.380224347114563
+    },
+    {
+      "Feature": "num__TotalCharges",
+      "Importance": 0.3227227032184601
+    },
+    {
+      "Feature": "cat__OnlineSecurity_No",
+      "Importance": 0.29160913825035095
+    },
+    {
+      "Feature": "num__CLV",
+      "Importance": 0.2682623565196991
+    },
+    {
+      "Feature": "num__internet_no_tech_support",
+      "Importance": 0.23439814150333405
+    },
+    {
+      "Feature": "cat__Contract_Two year",
+      "Importance": 0.2186586558818817
+    },
+    {
+      "Feature": "cat__PaymentMethod_Electronic check",
+      "Importance": 0.15832768380641937
+    },
+    {
+      "Feature": "cat__InternetService_Fiber optic",
+      "Importance": 0.1255238950252533
+    },
+    {
+      "Feature": "cat__PaperlessBilling_No",
+      "Importance": 0.12077880650758743
+    },
+    {
+      "Feature": "cat__OnlineBackup_No",
+      "Importance": 0.10634903609752655
+    },
+    {
+      "Feature": "cat__gender_Female",
+      "Importance": 0.1046411320567131
+    },
+    {
+      "Feature": "num__services_count",
+      "Importance": 0.09299693256616592
+    },
+    {
+      "Feature": "cat__Dependents_No",
+      "Importance": 0.08719049394130707
+    },
+    {
+      "Feature": "cat__MultipleLines_No",
+      "Importance": 0.08623963594436646
+    },
+    {
+      "Feature": "cat__TechSupport_No",
+      "Importance": 0.07198446244001389
+    },
+    {
+      "Feature": "cat__Partner_No",
+      "Importance": 0.06653115898370743
+    },
+    {
+      "Feature": "cat__SeniorCitizen_0",
+      "Importance": 0.05875031277537346
+    },
+    {
+      "Feature": "cat__InternetService_DSL",
+      "Importance": 0.05175534263253212
+    },
+    {
+      "Feature": "cat__PaymentMethod_Credit card (automatic)",
+      "Importance": 0.047627851366996765
+    },
+    {
+      "Feature": "cat__PaymentMethod_Mailed check",
+      "Importance": 0.04658934473991394
+    },
+    {
+      "Feature": "cat__MultipleLines_Yes",
+      "Importance": 0.04607696086168289
+    },
+    {
+      "Feature": "cat__PaymentMethod_Bank transfer (automatic)",
+      "Importance": 0.04204840585589409
+    },
+    {
+      "Feature": "cat__StreamingMovies_Yes",
+      "Importance": 0.04123951122164726
+    },
+    {
+      "Feature": "cat__StreamingMovies_No",
+      "Importance": 0.03919046372175217
+    },
+    {
+      "Feature": "cat__tenure_bucket_24m+",
+      "Importance": 0.038497522473335266
+    },
+    {
+      "Feature": "cat__DeviceProtection_Yes",
+      "Importance": 0.03822244331240654
+    },
+    {
+      "Feature": "cat__DeviceProtection_No",
+      "Importance": 0.035247258841991425
+    },
+    {
+      "Feature": "cat__Contract_One year",
+      "Importance": 0.03454677760601044
+    },
+    {
+      "Feature": "cat__OnlineBackup_Yes",
+      "Importance": 0.03270970657467842
+    },
+    {
+      "Feature": "cat__StreamingTV_Yes",
+      "Importance": 0.03236282616853714
+    },
+    {
+      "Feature": "cat__OnlineSecurity_Yes",
+      "Importance": 0.027532247826457024
+    },
+    {
+      "Feature": "cat__StreamingTV_No",
+      "Importance": 0.026994984596967697
+    },
+    {
+      "Feature": "cat__TechSupport_Yes",
+      "Importance": 0.022678103297948837
+    },
+    {
+      "Feature": "cat__gender_Male",
+      "Importance": 0.02017168514430523
+    },
+    {
+      "Feature": "cat__tenure_bucket_6-12m",
+      "Importance": 0.018262628465890884
+    },
+    {
+      "Feature": "cat__InternetService_No",
+      "Importance": 0.018087424337863922
+    },
+    {
+      "Feature": "cat__Dependents_Yes",
+      "Importance": 0.016584239900112152
+    }
+  ],
+  "meta": {
+    "sample_size": 600
+  }
+}

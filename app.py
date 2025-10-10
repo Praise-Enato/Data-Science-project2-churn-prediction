@@ -29,12 +29,6 @@ from sklearn.metrics import (
     roc_curve,
 )
 
-# Optional SHAP (trees)
-try:
-    import shap
-    _HAS_SHAP = True
-except Exception:
-    _HAS_SHAP = False
 
 # --------------------------- Page & Global Styles ---------------------------
 st.set_page_config(page_title="Telco Customer Churn & CLV", page_icon="📊", layout="wide")
@@ -197,6 +191,59 @@ def get_feature_thresholds() -> tuple[float, float]:
     median_monthly = train_df["MonthlyCharges"].median()
     return float(ratio), float(median_monthly)
 
+
+@st.cache_data
+def load_importance_artifact(model_key: str) -> tuple[pd.DataFrame, str]:
+    path = os.path.join(MODELS_DIR, f"global_importance_{model_key}.json")
+    if not os.path.exists(path):
+        return pd.DataFrame(), ""
+    with open(path, "r") as f:
+        payload = json.load(f)
+    rows = payload.get("rows", [])
+    df = pd.DataFrame(rows)
+    source = payload.get("source", "")
+    return df, source
+
+
+def _persist_importance_dataframe(model_key: str, source: str, df: pd.DataFrame):
+    if df.empty:
+        return
+    path = os.path.join(MODELS_DIR, f"global_importance_{model_key}.json")
+
+    def _py(val):
+        if isinstance(val, (np.generic,)):
+            return val.item()
+        return val
+
+    rows = [{k: _py(v) for k, v in row.items()} for row in df.to_dict(orient="records")]
+    with open(path, "w") as f:
+        json.dump({"source": source, "rows": rows}, f, indent=2)
+
+
+def compute_importance_live(model_key: str, model_path: str, selected_kind: str) -> tuple[pd.DataFrame, str]:
+    try:
+        pipe = load_pipeline_at(model_path)
+    except Exception as exc:
+        st.warning(f"Could not load pipeline for {model_key.upper()} importance: {exc}")
+        return pd.DataFrame(), ""
+
+    if selected_kind == "tree":
+        df_imp = global_importance_tree_feature_importances(pipe, top_n=25)
+        source = "feature_importances"
+    else:
+        df_imp = global_importance_logreg(pipe, top_n=25)
+        source = "coef_std"
+
+    if df_imp.empty:
+        return pd.DataFrame(), ""
+
+    _persist_importance_dataframe(model_key, source, df_imp)
+    try:
+        load_importance_artifact.clear()
+    except Exception:
+        pass
+    return df_imp, source
+
 # --------------------------- Utilities ---------------------------
 def compute_clv(monthly_charges: float, contract: str) -> float:
     return float(monthly_charges) * EXPECTED_TENURE_MAP.get(contract, 6)
@@ -311,6 +358,7 @@ def render_clv_plot_inline():
         ax.set_ylim(0, max(.01, agg["churn_rate"].max())*1.15)
         ax.set_ylabel("Churn rate"); ax.set_title("Churn rate by CLV quartile (train)")
         st.pyplot(fig)
+        plt.close(fig)
     except Exception as e:
         st.warning(f"Could not build CLV plot: {e}")
 
@@ -360,38 +408,6 @@ def global_importance_tree_feature_importances(pipe, top_n=25) -> pd.DataFrame:
     df["Direction"] = "Contributes to churn"
     return df.sort_values("Importance", ascending=False).head(top_n)[["Feature","Importance","Direction"]]
 
-def tree_shap_importance(pipe, sample_df: pd.DataFrame, top_n=25) -> pd.DataFrame:
-    if not _HAS_SHAP:
-        return pd.DataFrame()
-    pre   = pipe.named_steps["pre"]
-    model = pipe.named_steps["model"]
-    X_pre = pre.transform(sample_df)
-    feat_names = _get_feature_names(pre)
-    X_d = X_pre.toarray() if hasattr(X_pre, "toarray") else X_pre
-    try:
-        explainer = shap.TreeExplainer(model)
-        shap_vals = explainer.shap_values(X_d)
-    except Exception:
-        return pd.DataFrame()
-    if isinstance(shap_vals, list) and len(shap_vals) == 2:
-        shap_vals_use = shap_vals[1]
-    else:
-        shap_vals_use = shap_vals
-    importance = np.mean(np.abs(shap_vals_use), axis=0)
-    if hasattr(importance, "A1"):  # sparse matrix -> flatten
-        importance = importance.A1
-    else:
-        importance = np.asarray(importance).ravel()
-    n = min(len(feat_names), len(importance))
-    feature_list = list(feat_names[:n])
-    df = pd.DataFrame({
-        "FeatureRaw": feature_list,
-        "Importance": importance[:n],
-        "Direction": "Contributes to churn"
-    })
-    df["Feature"] = df["FeatureRaw"].apply(pretty_feature_name)
-    return df.sort_values("Importance", ascending=False).head(top_n)[["Feature","Importance","Direction"]]
-
 def render_importance_chart(df: pd.DataFrame, title: str):
     if df.empty:
         st.info("No importance data available.")
@@ -401,12 +417,13 @@ def render_importance_chart(df: pd.DataFrame, title: str):
         st.write(title)
         st.dataframe(df[display_cols], use_container_width=True, hide_index=True)
         return
+    chart_height = max(340, 28 * max(len(df), 1))
     chart = alt.Chart(df).mark_bar().encode(
         x=alt.X("Importance:Q", title="Importance"),
         y=alt.Y("Feature:N", sort="-x", title="Feature"),
         color=alt.Color("Direction:N", legend=alt.Legend(title="Effect"), scale=alt.Scale(scheme="tealblues")) if "Direction" in df.columns else alt.value("#7C4DFF"),
         tooltip=display_cols
-    ).properties(title=title, width="container", height=320)
+    ).properties(title=title, width="container", height=chart_height)
     st.altair_chart(chart, use_container_width=True)
 
 # ---------- Retention logic ----------
@@ -725,10 +742,14 @@ with tabs[0]:
                 top_neg = top_neg.rename(columns={"logit_contrib":"Log-odds Δ"})[["Feature","Log-odds Δ","Odds×"]]
                 with c1:
                     st.write("**Pushes risk UP**")
-                    st.dataframe(top_pos.style.format({"Log-odds Δ":"{:.3f}"}), use_container_width=True)
+                    top_pos_display = top_pos.copy()
+                    top_pos_display["Log-odds Δ"] = top_pos_display["Log-odds Δ"].round(3)
+                    st.dataframe(top_pos_display, use_container_width=True, hide_index=True)
                 with c2:
                     st.write("**Pushes risk DOWN**")
-                    st.dataframe(top_neg.style.format({"Log-odds Δ":"{:.3f}"}), use_container_width=True)
+                    top_neg_display = top_neg.copy()
+                    top_neg_display["Log-odds Δ"] = top_neg_display["Log-odds Δ"].round(3)
+                    st.dataframe(top_neg_display, use_container_width=True, hide_index=True)
                 st.caption("Interpretation: each row shows the contribution to the log-odds. "
                            "`Odds×` is the multiplicative impact on odds for this input (e.g., 1.30 = +30%).")
                 st.markdown('</div>', unsafe_allow_html=True)
@@ -756,16 +777,20 @@ with tabs[1]:
         st.error(str(e))
     st.markdown('</div>', unsafe_allow_html=True)
 
+    mm_data = {}
     mm_path = os.path.join(MODELS_DIR, "metrics_all.json")
     if os.path.exists(mm_path):
         with open(mm_path) as f:
-            all_metrics = json.load(f, object_pairs_hook=dict)
-        if all_metrics:
+            mm_data = json.load(f, object_pairs_hook=dict)
+
+    if mm_data:
+        show_cm = st.toggle("Show test confusion matrices", value=False, help="Rendering the images can take a moment on large screens.")
+        if show_cm:
             st.markdown('<div class="card section">', unsafe_allow_html=True)
             st.write("**Confusion matrices (Test)**")
-            cols = st.columns(len(all_metrics))
+            cols = st.columns(len(mm_data))
             label_map = {"logreg": "Logistic Regression", "rf": "Random Forest", "xgb": "XGBoost"}
-            for col, (model_key, stats) in zip(cols, all_metrics.items()):
+            for col, (model_key, stats) in zip(cols, mm_data.items()):
                 with col:
                     test_stats = stats.get("test", {})
                     cm = np.array([
@@ -773,7 +798,7 @@ with tabs[1]:
                         [int(test_stats.get("fn", 0)), int(test_stats.get("tp", 0))],
                     ], dtype=int)
                     fig, ax = plt.subplots(figsize=(3.6, 3.6))
-                    im = ax.imshow(cm, cmap="Blues")
+                    ax.imshow(cm, cmap="Blues")
                     for (i, j), value in np.ndenumerate(cm):
                         text_color = "white" if value > cm.max() / 2 else "#0b1220"
                         ax.text(j, i, f"{value}", va="center", ha="center", color=text_color, fontsize=11, fontweight="bold")
@@ -790,14 +815,12 @@ with tabs[1]:
             st.markdown('</div>', unsafe_allow_html=True)
 
     # Comparison table
-    mm_path = os.path.join(MODELS_DIR, "metrics_all.json")
-    if os.path.exists(mm_path):
-        with open(mm_path) as f: mm = json.load(f)
+    if mm_data:
         order = ["logreg","rf","xgb"]; label = {"logreg":"LOGREG","rf":"RANDOM FOREST","xgb":"XGBOOST"}
         rows=[]
         for m in order:
-            if m in mm and "test" in mm[m]:
-                t = mm[m]["test"]
+            if m in mm_data and "test" in mm_data[m]:
+                t = mm_data[m]["test"]
                 rows.append({
                     "Model": label[m],
                     "Precision": round(float(t.get("precision",np.nan)),3),
@@ -813,19 +836,23 @@ with tabs[1]:
             st.markdown('</div>', unsafe_allow_html=True)
 
     # ROC overlay
-    rc_path = os.path.join(MODELS_DIR, "roc_curves_test.json")
-    if os.path.exists(rc_path):
-        with open(rc_path) as f: rc = json.load(f)
-        if rc:
-            fig = plt.figure()
-            for name, pts in rc.items():
-                plt.plot(pts["fpr"], pts["tpr"], label=name.upper())
-            plt.plot([0,1],[0,1], ls="--", lw=1)
-            plt.xlabel("False Positive Rate"); plt.ylabel("True Positive Rate")
-            plt.title("ROC (Test)"); plt.legend()
-            st.markdown('<div class="card section">', unsafe_allow_html=True)
-            st.pyplot(fig)
-            st.markdown('</div>', unsafe_allow_html=True)
+    show_roc = st.toggle("Show ROC overlay", value=False, help="Loads saved ROC curve coordinates.")
+    if show_roc:
+        rc_path = os.path.join(MODELS_DIR, "roc_curves_test.json")
+        if os.path.exists(rc_path):
+            with open(rc_path) as f:
+                rc = json.load(f)
+            if rc:
+                fig = plt.figure()
+                for name, pts in rc.items():
+                    plt.plot(pts["fpr"], pts["tpr"], label=name.upper())
+                plt.plot([0,1],[0,1], ls="--", lw=1)
+                plt.xlabel("False Positive Rate"); plt.ylabel("True Positive Rate")
+                plt.title("ROC (Test)"); plt.legend()
+                st.markdown('<div class="card section">', unsafe_allow_html=True)
+                st.pyplot(fig)
+                plt.close(fig)
+                st.markdown('</div>', unsafe_allow_html=True)
 
     # Calibration toggle
     st.markdown('<div class="card section">', unsafe_allow_html=True)
@@ -886,44 +913,62 @@ with tabs[1]:
         default_index = labels.index(default_label) if default_label in labels else 0
         selected_label = st.selectbox("Select model for global importance", labels, index=default_index)
         selected_path, selected_kind = next((p, k) for lbl, p, k in available_pipes if lbl == selected_label)
+        model_key_map = {"Logistic Regression": "logreg", "Random Forest": "rf", "XGBoost": "xgb"}
+        model_key = model_key_map.get(selected_label)
+        df_cached = pd.DataFrame()
+        source = ""
+        if model_key:
+            df_cached, source = load_importance_artifact(model_key)
+            if df_cached.empty:
+                with st.spinner(f"Computing {selected_label} importance…"):
+                    df_cached, source = compute_importance_live(model_key, selected_path, selected_kind)
 
-        try:
-            pipe = load_pipeline_at(selected_path)
-        except Exception as e:
-            st.error(f"Could not load pipeline: {e}")
-            pipe = None
-
-        if pipe is not None:
-            sample_df = None
-            try:
-                _, _, test_df = load_processed_splits()
-                X_test = test_df.drop(columns=["ChurnFlag"])
-                sample_n = min(1000, len(X_test))
-                sample_df = X_test.sample(sample_n, random_state=42) if len(X_test) > sample_n else X_test
-            except Exception as e:
-                st.caption("Note: could not load test set sample for SHAP — " + str(e))
-
-            if selected_kind == "tree":
+        if not df_cached.empty:
+            df_show = df_cached.copy()
+            if "Feature" in df_show.columns:
+                df_show["FeatureRaw"] = df_show["Feature"]
+                df_show["Feature"] = df_show["Feature"].apply(pretty_feature_name)
+            if "Direction" not in df_show.columns and "Signed" in df_show.columns:
+                df_show["Direction"] = np.where(df_show["Signed"] >= 0, "Increases churn", "Decreases churn")
+            render_importance_chart(df_show, f"{selected_label} feature importance")
+            source_caption = {
+                "coef_std": "Precomputed from |coefficient × std| on the training split.",
+                "shap": "Precomputed from mean |SHAP| values on a held-out sample.",
+                "feature_importances": "Precomputed from tree-based feature_importances_.",
+            }
+            if source in source_caption:
+                st.caption(source_caption[source])
+        else:
+            st.info(
+                "Precomputed importance is missing. Re-run `python -m src.model_train` to refresh artifacts "
+                "or use the button below to attempt a fresh calculation."
+            )
+            compute_now = st.button(f"Compute {selected_label} importance now", key=f"compute_{selected_label}")
+            if compute_now:
                 df_imp = pd.DataFrame()
-                if _HAS_SHAP and sample_df is not None:
-                    df_imp = tree_shap_importance(pipe, sample_df, top_n=25)
-                    if not df_imp.empty:
-                        render_importance_chart(df_imp, f"{selected_label} SHAP feature importance")
-                        st.caption("Mean |SHAP| values on a sampled test subset.")
-                if df_imp.empty:
-                    df_imp = global_importance_tree_feature_importances(pipe, top_n=25)
-                    if df_imp.empty:
-                        st.info("Feature importances unavailable for this model.")
-                    else:
-                        render_importance_chart(df_imp, f"{selected_label} feature importance")
-                        st.caption("Tree-based importance derived from feature_importances_.")
-            else:
-                df_imp = global_importance_logreg(pipe, top_n=25)
-                if df_imp.empty:
-                    st.info("Coefficient-based importance unavailable for this model.")
+                source_manual = ""
+                if not model_key:
+                    st.warning("Model mapping unavailable; cannot compute importance for this selection.")
                 else:
-                    render_importance_chart(df_imp, "Logistic Regression feature importance")
-                    st.caption("Bars use |coefficient × std|; color indicates churn direction.")
+                    with st.spinner(f"Computing {selected_label} importance…"):
+                        df_imp, source_manual = compute_importance_live(model_key, selected_path, selected_kind)
+                if df_imp.empty:
+                    st.info("Importance unavailable for this model.")
+                else:
+                    df_render = df_imp.copy()
+                    if "Feature" in df_render.columns:
+                        df_render["FeatureRaw"] = df_render["Feature"]
+                        df_render["Feature"] = df_render["Feature"].apply(pretty_feature_name)
+                    if "Direction" not in df_render.columns and "Signed" in df_render.columns:
+                        df_render["Direction"] = np.where(df_render["Signed"] >= 0, "Increases churn", "Decreases churn")
+                    render_importance_chart(df_render, f"{selected_label} feature importance")
+                    source_caption = {
+                        "coef_std": "Computed from |coefficient × std| on the training split.",
+                        "shap": "Computed from mean |SHAP| values on a held-out sample.",
+                        "feature_importances": "Computed from tree-based feature_importances_.",
+                    }
+                    if source_manual in source_caption:
+                        st.caption(source_caption[source_manual])
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ===================== Tab 3: CLV Overview =====================

@@ -1,10 +1,12 @@
 pandas
 numpy
 scikit-learn
-xgboost
-shap
 matplotlib
 streamlit
 joblib
 seaborn
 altair
+
+# Optional extras installed only when advanced interpretability or XGBoost is required.
+# shap
+# xgboost
