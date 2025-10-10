@@ -53,9 +53,16 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
       - monthly_to_total_ratio
       - internet_no_tech_support (flag)
       - Additional interaction/business signals to improve recall/precision
+      - Secondary business features used by the Streamlit app
       - Map target y: Churn {No,Yes} -> {0,1}
     """
     df = df.copy()
+
+    if "CLV" not in df.columns or "ExpectedTenure" not in df.columns:
+        raise KeyError(
+            "engineer_features expects CLV and ExpectedTenure columns. "
+            "Run compute_expected_tenure_and_clv() before engineering features."
+        )
 
     # tenure_bucket
     bins = [-0.1, 6, 12, 24, np.inf]
@@ -117,6 +124,30 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     median_ratio = clv_ratio.median()
     df["high_charge_to_clv_ratio"] = (clv_ratio >= median_ratio).astype(int)
 
+    # Secondary engineered metrics used by the app for retention logic
+    df["tenure_years"] = df["tenure"] / 12.0
+    df["per_service_charge"] = df["MonthlyCharges"] / df["services_count"].replace(0, 1)
+    df["is_fiber_optic"] = (df["InternetService"].str.strip().str.lower() == "fiber optic").astype(int)
+    df["has_streaming_any"] = (df["streaming_services"] > 0).astype(int)
+    df["has_support_any"] = (df["support_services"] > 0).astype(int)
+    df["has_multiple_lines_yes"] = (df["MultipleLines"].str.strip().str.lower() == "yes").astype(int)
+    pay_method_lower = df["PaymentMethod"].fillna("").str.strip().str.lower()
+    df["is_electronic_check"] = (pay_method_lower == "electronic check").astype(int)
+    paperless_lower = df["PaperlessBilling"].fillna("").str.strip().str.lower()
+    df["paperless_autopay"] = ((paperless_lower == "yes") & (df["is_auto_pay"] == 1)).astype(int)
+    partner_lower = df["Partner"].fillna("").str.strip().str.lower()
+    dependents_lower = df["Dependents"].fillna("").str.strip().str.lower()
+    df["family_bundle"] = ((partner_lower == "yes") | (dependents_lower == "yes")).astype(int)
+    df["early_tenure_flag"] = (df["tenure"] <= 6).astype(int)
+    monthly_median = df["MonthlyCharges"].median()
+    df["high_monthly_charge"] = (df["MonthlyCharges"] >= monthly_median).astype(int)
+
+    # Expected tenure derived features
+    df["tenure_remaining"] = (df["ExpectedTenure"] - df["tenure"]).clip(lower=0)
+    df["tenure_fraction_complete"] = (df["tenure"] / df["ExpectedTenure"].replace(0, 1)).clip(upper=5.0)
+    df["remaining_value"] = (df["CLV"] - df["TotalCharges"]).clip(lower=0)
+    df["remaining_value_ratio"] = df["remaining_value"] / df["CLV"].replace(0, 1)
+
     # Target mapping
     df["ChurnFlag"] = (df["Churn"].str.strip().str.lower() == "yes").astype(int)
 
@@ -156,6 +187,12 @@ def select_model_columns(df: pd.DataFrame):
         "tenure_bucket_ord", "is_auto_pay", "is_long_contract",
         "streaming_services", "support_services", "senior_fiber_optic",
         "charges_per_month_of_tenure", "high_charge_to_clv_ratio",
+        "tenure_years", "per_service_charge", "is_fiber_optic",
+        "has_streaming_any", "has_support_any", "has_multiple_lines_yes",
+        "is_electronic_check", "paperless_autopay", "family_bundle",
+        "early_tenure_flag", "high_monthly_charge", "tenure_remaining",
+        "tenure_fraction_complete", "remaining_value",
+        "remaining_value_ratio",
         # categoricals (kept as strings for now; encoder later)
         "gender", "SeniorCitizen", "Partner", "Dependents",
         "PhoneService", "MultipleLines", "InternetService",
@@ -203,11 +240,11 @@ def main():
     print("Cleaning TotalCharges…")
     df = clean_total_charges(df)
 
-    print("Engineering features…")
-    df = engineer_features(df)
-
     print("Computing ExpectedTenure + CLV…")
     df = compute_expected_tenure_and_clv(df)
+
+    print("Engineering features…")
+    df = engineer_features(df)
 
     print("Preparing splits…")
     X, y = select_model_columns(df)

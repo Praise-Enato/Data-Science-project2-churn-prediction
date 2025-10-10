@@ -2,164 +2,164 @@
   "source": "feature_importances",
   "rows": [
     {
-      "Feature": "cat__Contract_Month-to-month",
-      "Importance": 0.27973246574401855
+      "Feature": "num__is_long_contract",
+      "Importance": 0.26179417967796326
     },
     {
-      "Feature": "cat__TechSupport_No",
-      "Importance": 0.08017712086439133
-    },
-    {
-      "Feature": "cat__Contract_Two year",
-      "Importance": 0.06240088492631912
-    },
-    {
-      "Feature": "num__internet_no_tech_support",
-      "Importance": 0.056611400097608566
+      "Feature": "num__high_charge_to_clv_ratio",
+      "Importance": 0.1623750776052475
     },
     {
       "Feature": "cat__InternetService_Fiber optic",
-      "Importance": 0.05242745578289032
+      "Importance": 0.06452420353889465
+    },
+    {
+      "Feature": "num__is_fiber_optic",
+      "Importance": 0.050381314009428024
+    },
+    {
+      "Feature": "cat__Contract_Two year",
+      "Importance": 0.029072096571326256
     },
     {
       "Feature": "cat__OnlineSecurity_No",
-      "Importance": 0.03481803089380264
-    },
-    {
-      "Feature": "cat__Contract_One year",
-      "Importance": 0.03397512063384056
-    },
-    {
-      "Feature": "cat__tenure_bucket_24m+",
-      "Importance": 0.029298655688762665
-    },
-    {
-      "Feature": "cat__tenure_bucket_0-6m",
-      "Importance": 0.02288689650595188
+      "Importance": 0.02259058505296707
     },
     {
       "Feature": "cat__InternetService_DSL",
-      "Importance": 0.02221313677728176
+      "Importance": 0.021295366808772087
+    },
+    {
+      "Feature": "num__remaining_value_ratio",
+      "Importance": 0.01921827718615532
+    },
+    {
+      "Feature": "num__internet_no_tech_support",
+      "Importance": 0.019089091569185257
     },
     {
       "Feature": "cat__StreamingMovies_Yes",
-      "Importance": 0.01798025518655777
+      "Importance": 0.016820522025227547
     },
     {
-      "Feature": "num__CLV",
-      "Importance": 0.016311030834913254
+      "Feature": "cat__Contract_One year",
+      "Importance": 0.016192715615034103
+    },
+    {
+      "Feature": "num__remaining_value",
+      "Importance": 0.015687312930822372
+    },
+    {
+      "Feature": "cat__TechSupport_No",
+      "Importance": 0.015348493121564388
     },
     {
       "Feature": "num__tenure",
-      "Importance": 0.015556206926703453
+      "Importance": 0.011614031158387661
+    },
+    {
+      "Feature": "num__tenure_years",
+      "Importance": 0.011395061388611794
     },
     {
       "Feature": "cat__PaymentMethod_Electronic check",
-      "Importance": 0.01476622186601162
+      "Importance": 0.010095354169607162
     },
     {
-      "Feature": "cat__InternetService_No",
-      "Importance": 0.011981104500591755
-    },
-    {
-      "Feature": "cat__OnlineSecurity_No internet service",
-      "Importance": 0.011399231851100922
-    },
-    {
-      "Feature": "cat__StreamingMovies_No",
-      "Importance": 0.011307662352919579
-    },
-    {
-      "Feature": "num__MonthlyCharges",
-      "Importance": 0.01102191861718893
-    },
-    {
-      "Feature": "cat__OnlineBackup_No",
-      "Importance": 0.010889592580497265
-    },
-    {
-      "Feature": "cat__PaperlessBilling_No",
-      "Importance": 0.00982903316617012
+      "Feature": "num__streaming_services",
+      "Importance": 0.009968055412173271
     },
     {
       "Feature": "num__TotalCharges",
-      "Importance": 0.00972924754023552
-    },
-    {
-      "Feature": "cat__StreamingTV_No",
-      "Importance": 0.008669729344546795
-    },
-    {
-      "Feature": "num__services_count",
-      "Importance": 0.008492466993629932
-    },
-    {
-      "Feature": "cat__PaperlessBilling_Yes",
-      "Importance": 0.008265161886811256
-    },
-    {
-      "Feature": "cat__tenure_bucket_12-24m",
-      "Importance": 0.008238614536821842
-    },
-    {
-      "Feature": "cat__DeviceProtection_Yes",
-      "Importance": 0.008049222640693188
-    },
-    {
-      "Feature": "cat__MultipleLines_Yes",
-      "Importance": 0.007813624106347561
-    },
-    {
-      "Feature": "cat__MultipleLines_No",
-      "Importance": 0.0076521094888448715
-    },
-    {
-      "Feature": "cat__gender_Male",
-      "Importance": 0.007428997196257114
-    },
-    {
-      "Feature": "num__monthly_to_total_ratio",
-      "Importance": 0.007255164906382561
-    },
-    {
-      "Feature": "cat__PaymentMethod_Mailed check",
-      "Importance": 0.00712268240749836
-    },
-    {
-      "Feature": "cat__Dependents_No",
-      "Importance": 0.007008264306932688
+      "Importance": 0.009946443140506744
     },
     {
       "Feature": "cat__PhoneService_Yes",
-      "Importance": 0.006902698427438736
+      "Importance": 0.009936011396348476
     },
     {
-      "Feature": "cat__SeniorCitizen_1",
-      "Importance": 0.0068422905169427395
+      "Feature": "num__services_count",
+      "Importance": 0.009890113025903702
     },
     {
-      "Feature": "cat__SeniorCitizen_0",
-      "Importance": 0.006819022353738546
+      "Feature": "num__MonthlyCharges",
+      "Importance": 0.009485753253102303
     },
     {
-      "Feature": "cat__PaymentMethod_Bank transfer (automatic)",
-      "Importance": 0.006794060114771128
+      "Feature": "num__is_electronic_check",
+      "Importance": 0.009414032101631165
     },
     {
-      "Feature": "cat__PhoneService_No",
-      "Importance": 0.006731884554028511
+      "Feature": "num__paperless_autopay",
+      "Importance": 0.008785141631960869
     },
     {
-      "Feature": "cat__StreamingTV_Yes",
-      "Importance": 0.006658333353698254
+      "Feature": "num__is_auto_pay",
+      "Importance": 0.008075080811977386
+    },
+    {
+      "Feature": "cat__MultipleLines_No",
+      "Importance": 0.007836868986487389
+    },
+    {
+      "Feature": "cat__PaperlessBilling_No",
+      "Importance": 0.007741482462733984
+    },
+    {
+      "Feature": "num__charges_per_month_of_tenure",
+      "Importance": 0.007648357655853033
+    },
+    {
+      "Feature": "cat__OnlineSecurity_Yes",
+      "Importance": 0.007547473534941673
+    },
+    {
+      "Feature": "cat__StreamingMovies_No",
+      "Importance": 0.006901341490447521
+    },
+    {
+      "Feature": "cat__PaymentMethod_Mailed check",
+      "Importance": 0.006850129459053278
+    },
+    {
+      "Feature": "cat__OnlineBackup_No",
+      "Importance": 0.006792776752263308
     },
     {
       "Feature": "cat__Dependents_Yes",
-      "Importance": 0.006543698254972696
+      "Importance": 0.00654571270570159
     },
     {
-      "Feature": "cat__tenure_bucket_6-12m",
-      "Importance": 0.006497066468000412
+      "Feature": "num__CLV",
+      "Importance": 0.00605012197047472
+    },
+    {
+      "Feature": "num__per_service_charge",
+      "Importance": 0.006003253161907196
+    },
+    {
+      "Feature": "cat__PaperlessBilling_Yes",
+      "Importance": 0.005927080754190683
+    },
+    {
+      "Feature": "cat__gender_Male",
+      "Importance": 0.00560907693579793
+    },
+    {
+      "Feature": "cat__Dependents_No",
+      "Importance": 0.005310453474521637
+    },
+    {
+      "Feature": "cat__OnlineBackup_Yes",
+      "Importance": 0.005298292730003595
+    },
+    {
+      "Feature": "num__tenure_fraction_complete",
+      "Importance": 0.0052749947644770145
+    },
+    {
+      "Feature": "num__support_services",
+      "Importance": 0.0052474066615104675
     }
   ]
 }

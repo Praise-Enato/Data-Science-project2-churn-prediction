@@ -3,163 +3,163 @@
   "rows": [
     {
       "Feature": "cat__Contract_Month-to-month",
-      "Importance": 0.13156434482501056
+      "Importance": 0.08611590295608003
+    },
+    {
+      "Feature": "num__high_charge_to_clv_ratio",
+      "Importance": 0.08145688140633071
+    },
+    {
+      "Feature": "num__is_long_contract",
+      "Importance": 0.07303169075302177
+    },
+    {
+      "Feature": "num__tenure_years",
+      "Importance": 0.04517605085605905
     },
     {
       "Feature": "num__tenure",
-      "Importance": 0.09238542272493576
+      "Importance": 0.044010990100446144
     },
     {
       "Feature": "num__CLV",
-      "Importance": 0.07186001212830413
-    },
-    {
-      "Feature": "cat__OnlineSecurity_No",
-      "Importance": 0.06323698522717956
-    },
-    {
-      "Feature": "cat__TechSupport_No",
-      "Importance": 0.05947186140708433
+      "Importance": 0.04098097686158096
     },
     {
       "Feature": "num__internet_no_tech_support",
-      "Importance": 0.05562609733649557
+      "Importance": 0.03685789839168794
+    },
+    {
+      "Feature": "cat__TechSupport_No",
+      "Importance": 0.03654847532847002
+    },
+    {
+      "Feature": "cat__OnlineSecurity_No",
+      "Importance": 0.03629989490048854
     },
     {
       "Feature": "cat__Contract_Two year",
-      "Importance": 0.05411884736004816
+      "Importance": 0.03281735972786874
     },
     {
-      "Feature": "num__TotalCharges",
-      "Importance": 0.05235799932583022
+      "Feature": "num__per_service_charge",
+      "Importance": 0.0326572269903776
+    },
+    {
+      "Feature": "num__is_fiber_optic",
+      "Importance": 0.028964628477201868
+    },
+    {
+      "Feature": "num__charges_per_month_of_tenure",
+      "Importance": 0.028293934457851166
     },
     {
       "Feature": "cat__InternetService_Fiber optic",
-      "Importance": 0.04890055895472784
+      "Importance": 0.02764932437731601
+    },
+    {
+      "Feature": "num__TotalCharges",
+      "Importance": 0.02693794250395579
+    },
+    {
+      "Feature": "num__tenure_bucket_ord",
+      "Importance": 0.026804009524270162
     },
     {
       "Feature": "num__MonthlyCharges",
-      "Importance": 0.04229226886403352
+      "Importance": 0.026615403498530425
+    },
+    {
+      "Feature": "num__tenure_fraction_complete",
+      "Importance": 0.024071811114726515
     },
     {
       "Feature": "cat__tenure_bucket_24m+",
-      "Importance": 0.0395973520212181
+      "Importance": 0.018360324925338525
     },
     {
       "Feature": "cat__PaymentMethod_Electronic check",
-      "Importance": 0.02900450180983014
+      "Importance": 0.015569752607069935
     },
     {
-      "Feature": "cat__tenure_bucket_0-6m",
-      "Importance": 0.026036826127495385
+      "Feature": "num__remaining_value",
+      "Importance": 0.013685216681811021
     },
     {
       "Feature": "num__monthly_to_total_ratio",
-      "Importance": 0.01907928934986539
+      "Importance": 0.012075158599035175
     },
     {
-      "Feature": "cat__InternetService_DSL",
-      "Importance": 0.015264234685129259
+      "Feature": "num__is_electronic_check",
+      "Importance": 0.009914036180310806
+    },
+    {
+      "Feature": "cat__tenure_bucket_0-6m",
+      "Importance": 0.009707035990513846
+    },
+    {
+      "Feature": "num__remaining_value_ratio",
+      "Importance": 0.009476469958320938
+    },
+    {
+      "Feature": "num__early_tenure_flag",
+      "Importance": 0.008467583671809782
     },
     {
       "Feature": "cat__Contract_One year",
-      "Importance": 0.014678672368018777
-    },
-    {
-      "Feature": "cat__OnlineBackup_No",
-      "Importance": 0.012218559398069812
-    },
-    {
-      "Feature": "num__services_count",
-      "Importance": 0.010619668239732417
-    },
-    {
-      "Feature": "cat__OnlineSecurity_No internet service",
-      "Importance": 0.010313394716099343
-    },
-    {
-      "Feature": "cat__InternetService_No",
-      "Importance": 0.010054053826397751
-    },
-    {
-      "Feature": "cat__OnlineSecurity_Yes",
-      "Importance": 0.00991852629175106
-    },
-    {
-      "Feature": "cat__StreamingMovies_No internet service",
-      "Importance": 0.008461044128432793
-    },
-    {
-      "Feature": "cat__TechSupport_No internet service",
-      "Importance": 0.008167381842332034
-    },
-    {
-      "Feature": "cat__OnlineBackup_No internet service",
-      "Importance": 0.007730752889316111
-    },
-    {
-      "Feature": "cat__PaperlessBilling_Yes",
-      "Importance": 0.007603737715652483
-    },
-    {
-      "Feature": "cat__PaperlessBilling_No",
-      "Importance": 0.007503878055361922
-    },
-    {
-      "Feature": "cat__StreamingTV_No internet service",
-      "Importance": 0.007483402921951489
+      "Importance": 0.0076967284429052775
     },
     {
       "Feature": "cat__DeviceProtection_No internet service",
-      "Importance": 0.006580890911485089
+      "Importance": 0.007473182261447202
     },
     {
-      "Feature": "cat__TechSupport_Yes",
-      "Importance": 0.00624079730311059
+      "Feature": "num__services_count",
+      "Importance": 0.0070106841306090285
     },
     {
-      "Feature": "cat__DeviceProtection_No",
-      "Importance": 0.005089478388339272
+      "Feature": "cat__InternetService_DSL",
+      "Importance": 0.00691967000297077
     },
     {
-      "Feature": "cat__StreamingMovies_Yes",
-      "Importance": 0.004558594070298783
+      "Feature": "cat__OnlineBackup_No",
+      "Importance": 0.006616273772497475
     },
     {
-      "Feature": "cat__gender_Female",
-      "Importance": 0.004279729924568051
+      "Feature": "cat__TechSupport_No internet service",
+      "Importance": 0.006603501313411983
     },
     {
-      "Feature": "cat__gender_Male",
-      "Importance": 0.0042508128568220374
+      "Feature": "cat__StreamingTV_No internet service",
+      "Importance": 0.006400678074385106
     },
     {
-      "Feature": "cat__StreamingMovies_No",
-      "Importance": 0.004217113455403724
+      "Feature": "cat__StreamingMovies_No internet service",
+      "Importance": 0.006325910863005789
     },
     {
-      "Feature": "cat__OnlineBackup_Yes",
-      "Importance": 0.003929858015480017
+      "Feature": "cat__InternetService_No",
+      "Importance": 0.006217886794512438
     },
     {
-      "Feature": "cat__MultipleLines_Yes",
-      "Importance": 0.0035677707484294365
+      "Feature": "num__tenure_remaining",
+      "Importance": 0.005799771810979924
     },
     {
-      "Feature": "cat__MultipleLines_No",
-      "Importance": 0.0035001690057032634
+      "Feature": "num__support_services",
+      "Importance": 0.005730691820592945
     },
     {
-      "Feature": "cat__Dependents_No",
-      "Importance": 0.0034399493422748438
+      "Feature": "cat__OnlineSecurity_No internet service",
+      "Importance": 0.005651156607931492
     },
     {
-      "Feature": "cat__Partner_No",
-      "Importance": 0.0030985258042454306
+      "Feature": "num__high_monthly_charge",
+      "Importance": 0.005535581560341167
     },
     {
-      "Feature": "cat__StreamingTV_Yes",
-      "Importance": 0.0030261703213415323
+      "Feature": "num__streaming_services",
+      "Importance": 0.00510385604407457
     }
   ]
 }
