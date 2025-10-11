@@ -557,9 +557,15 @@ def retention_recommendations(risk: str, value_seg: str, payload: dict) -> tuple
 with st.sidebar:
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.subheader("About")
-    st.write("Predict customer churn using a trained Logistic Regression pipeline with a recall-first threshold.")
-    st.write("CLV = **Monthly Charges × Expected Tenure** (6/12/24 months).")
-    st.caption("Data: IBM Telco Customer Churn. Built with Streamlit.")
+    st.write(
+        "Customer Churn Prediction & Customer Lifetime Value (CLV). "
+        "This app prioritizes retention by pairing churn risk with CLV segments derived from IBM Telco data."
+    )
+    st.write(
+        "Pipelines: Logistic Regression, Random Forest, and XGBoost with recall-first thresholding plus coefficient/feature-importance explanations."
+    )
+    st.write("CLV = **Monthly Charges × Expected Tenure** (6, 12, or 24 months) → Low/Medium/High/Premium tiers.")
+    st.caption("Built in Streamlit; data source: IBM Telco Customer Churn (direct CSV).")
     st.markdown('</div>', unsafe_allow_html=True)
 
 # --------------------------- Hero ---------------------------
