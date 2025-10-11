@@ -29,6 +29,25 @@ from sklearn.metrics import (
     roc_curve,
 )
 
+# Work around Streamlit 1.36 bug on Python 3.11 where shutdown can attempt to
+# schedule callbacks on a closed asyncio loop; skip the callback in that case.
+try:
+    from streamlit.runtime.app_session import AppSession  # type: ignore
+except Exception:
+    AppSession = None
+
+if AppSession is not None:
+    _orig_on_event = AppSession._on_scriptrunner_event
+    if not getattr(_orig_on_event, "_patched_for_closed_loop", False):
+        def _safe_on_scriptrunner_event(self, *args, **kwargs):
+            loop = getattr(self, "_event_loop", None)
+            if loop is not None and loop.is_closed():
+                return None
+            return _orig_on_event(self, *args, **kwargs)
+
+        _safe_on_scriptrunner_event._patched_for_closed_loop = True  # type: ignore[attr-defined]
+        AppSession._on_scriptrunner_event = _safe_on_scriptrunner_event
+
 
 # --------------------------- Page & Global Styles ---------------------------
 st.set_page_config(page_title="Telco Customer Churn & CLV", page_icon="📊", layout="wide")
