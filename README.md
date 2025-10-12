@@ -3,9 +3,8 @@
 Predict which telecom customers are likely to churn, estimate their Customer Lifetime Value (CLV), and prioritize retention with a Streamlit dashboard backed by scikit-learn models.
 
 **Live app:** <https://praise-enato-churn-project.streamlit.app/>  
-**Repo clone URL:** <https://github.com/Praise-Enato/Data-Science-project2-churn-prediction.git>
-
----
+**Repo Clone URL:** <https://github.com/Praise-Enato/Data-Science-project2-churn-prediction.git>
+**Demo Video URL:** 
 
 ## Project Highlights
 
@@ -44,6 +43,27 @@ Predict which telecom customers are likely to churn, estimate their Customer Lif
 - Baselines: Random Forest and XGBoost for comparison.
 - Operating policy: choose validation thresholds meeting recall >= 0.60 and report frozen metrics on the test set.
 - Metrics and ROC curve JSON files live under `models/` for reuse in the Streamlit app.
+
+## Model Performance
+
+### Validation (chosen) vs Test (frozen threshold)
+
+| Set                | Precision | Recall | F1-score | ROC-AUC | Threshold | TP  | FP  | TN  | FN |
+|--------------------|-----------|--------|---------:|--------:|----------:|---:|---:|---:|---:|
+| Validation (chosen)| **0.546** | **0.821** | **0.656** | **0.861** | **0.52** | 307 | 255 | 780 | 67 |
+| Test (frozen thr.) | **0.530** | **0.791** | **0.635** | **0.833** | **0.52** | 296 | 263 | 772 | 78 |
+
+> Threshold selected on validation to satisfy **recall ≥ 0.60** and maximize **F1**; frozen for test.
+
+### Model comparison (Test)
+
+| Model          | Precision | Recall | F1-score | ROC-AUC | Threshold |
+|----------------|-----------|--------|---------:|--------:|----------:|
+| **LOGREG**     | 0.558     | 0.682  | 0.614    | 0.839   | 0.61      |
+| **RANDOM FOREST** | 0.536  | 0.735  | 0.620    | 0.835   | 0.54      |
+| **XGBOOST**    | **0.530** | **0.791** | **0.635** | **0.833** | **0.52** |
+
+> ROC overlay available in the app; higher AUC indicates better separability.
 
 ## Streamlit App
 
