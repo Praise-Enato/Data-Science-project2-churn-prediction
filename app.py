@@ -571,7 +571,7 @@ with st.sidebar:
 # --------------------------- Hero ---------------------------
 st.markdown("""
 <div class="hero">
-  <h1>IBM Telco Customer Churn Prediction & CLV</h1>
+  <h1>Telco Customer Churn Prediction & CLV</h1>
   <p>An intelligent analytics app to predict churn, understand drivers, and optimize customer lifetime value.</p>
 </div>
 """, unsafe_allow_html=True)
