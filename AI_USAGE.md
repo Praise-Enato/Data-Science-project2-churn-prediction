@@ -5,6 +5,9 @@
 This project was completed by **Praise Enato** with targeted assistance from an AI coding tutor (ChatGPT 5).  
 The AI acted as a **pair-programmer/coach**, helping design the workflow, draft code, explain concepts line-by-line, and troubleshoot deployment/UX issues.
 
+**Live app:** <https://praise-enato-churn-project.streamlit.app/>
+**Repository:** <https://github.com/Praise-Enato/Data-Science-project2-churn-prediction>
+
 ## What AI Helped With
 
 ### Project planning & structure
