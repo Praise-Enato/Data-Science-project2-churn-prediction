@@ -9,7 +9,7 @@ The AI acted as a **pair-programmer/coach**, helping design the workflow, draft 
 
 ### Project planning & structure
 
-- Broke work into phases: setup → data prep → CLV analysis → modeling → interpretability → Streamlit app → deploy → docs/video.
+- Broke work into phases: setup → data prep → CLV analysis → modeling → interpretability → Streamlit app → deploy.
 
 ### Data preparation (`src/data_prep.py`)
 
